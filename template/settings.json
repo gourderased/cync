@@ -1,0 +1,13 @@
+{
+  "model": "opus",
+  "permissions": {
+    "allow": [],
+    "deny": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node ~/.claude/statusline.js"
+  },
+  "enabledPlugins": {},
+  "extraKnownMarketplaces": {}
+}

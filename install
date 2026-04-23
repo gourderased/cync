@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# install — bootstrap entry point.
+# Usage: curl -fsSL https://raw.githubusercontent.com/gourderased/cync/main/install | bash
+set -euo pipefail
+
+CYNC_DIR="$HOME/.cync"
+CYNC_REPO_URL="https://github.com/gourderased/cync.git"
+
+if [ ! -d "$CYNC_DIR/.git" ]; then
+  echo "==> Cloning cync into $CYNC_DIR"
+  git clone "$CYNC_REPO_URL" "$CYNC_DIR"
+else
+  echo "==> Updating cync in $CYNC_DIR"
+  (cd "$CYNC_DIR" && git pull --ff-only)
+fi
+
+exec "$CYNC_DIR/lib/setup.sh" "$@"
