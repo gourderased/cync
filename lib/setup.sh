@@ -5,6 +5,12 @@ set -euo pipefail
 
 CYNC_DIR="${CYNC_DIR:-$HOME/.cync}"
 
+# Keep prompts working when invoked via `curl ... | bash` (stdin is the pipe,
+# not a terminal). Reattach stdin to the controlling TTY if available.
+if [ ! -t 0 ] && [ -r /dev/tty ]; then
+  exec </dev/tty
+fi
+
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 info()  { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m!!\033[0m  %s\n' "$*" >&2; }
