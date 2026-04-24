@@ -68,7 +68,7 @@ bold "---------------------"
 REPOS=()
 while IFS= read -r line; do
   REPOS+=("$line")
-done < <(gh repo list --limit 100 --json nameWithOwner,visibility,description \
+done < <(gh repo list --limit 1000 --json nameWithOwner,visibility,description \
   --jq '.[] | "\(.nameWithOwner)\t\(.visibility)\t\(.description // "")"')
 
 i=1
@@ -95,10 +95,23 @@ if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
   die "invalid choice: $choice"
 fi
 
+REPO_VISIBILITY=""
+
 if [ "$choice" -eq "$CREATE_IDX" ]; then
-  read -r -p "Repo name [claude-config]: " repo_name
-  repo_name="${repo_name:-claude-config}"
+  repo_name=""
+  while [ -z "$repo_name" ]; do
+    read -r -p "Enter a name for your new private repo (e.g. claude-config, my-claude-setup): " repo_name
+    if [ -z "$repo_name" ]; then
+      warn "repo name is required"
+      continue
+    fi
+    if ! [[ "$repo_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+      warn "invalid repo name '$repo_name' — use letters, digits, '.', '_', '-' and start with letter/digit"
+      repo_name=""
+    fi
+  done
   REPO="$GH_USER/$repo_name"
+  REPO_VISIBILITY="private"
 
   info "Creating $REPO (private)"
   gh repo create "$REPO" --private --description "Claude Code config"
@@ -106,14 +119,34 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
   tmpdir="$(mktemp -d)"
   trap 'rm -rf "$tmpdir"' EXIT
 
-  info "Populating template files"
+  # Pick sane commit author: prefer the user's existing git config, then the
+  # authenticated GitHub user's profile, then GitHub's noreply email as a
+  # last-resort fallback so we never leave a bogus "cync@local" in history.
+  gh_name="$(gh api user --jq '.name // ""' 2>/dev/null || true)"
+  gh_email="$(gh api user --jq '.email // ""' 2>/dev/null || true)"
+  gh_id="$(gh api user --jq '.id // empty' 2>/dev/null || true)"
+  git_name="$(git config --global user.name 2>/dev/null || true)"
+  git_email="$(git config --global user.email 2>/dev/null || true)"
+
+  commit_name="${git_name:-${gh_name:-$GH_USER}}"
+  if [ -n "$git_email" ]; then
+    commit_email="$git_email"
+  elif [ -n "$gh_email" ]; then
+    commit_email="$gh_email"
+  elif [ -n "$gh_id" ]; then
+    commit_email="${gh_id}+${GH_USER}@users.noreply.github.com"
+  else
+    commit_email="${GH_USER}@users.noreply.github.com"
+  fi
+
+  info "Populating template files (author: $commit_name <$commit_email>)"
   gh repo clone "$REPO" "$tmpdir/repo"
   cp -a "$CYNC_DIR/template/." "$tmpdir/repo/"
   (
     cd "$tmpdir/repo"
     git add -A
-    git -c user.email="${GIT_AUTHOR_EMAIL:-cync@local}" \
-        -c user.name="${GIT_AUTHOR_NAME:-cync}" \
+    git -c user.email="$commit_email" \
+        -c user.name="$commit_name" \
         commit -m "Initial config from cync template"
     git push -u origin HEAD
   )
@@ -123,9 +156,20 @@ else
   idx=$((choice - 1))
   [ "$idx" -ge 0 ] && [ "$idx" -lt "${#REPOS[@]}" ] || die "choice out of range: $choice"
   REPO="$(printf '%s' "${REPOS[$idx]}" | cut -f1)"
+  REPO_VISIBILITY="$(printf '%s' "${REPOS[$idx]}" | cut -f2 | tr '[:upper:]' '[:lower:]')"
 fi
 
 info "Using config repo: $REPO"
+
+# Warn loudly if the user pointed cync at a public repo — settings and
+# CLAUDE.md can contain tokens, usernames, or private prompts they don't
+# want on the open internet.
+if [ "$REPO_VISIBILITY" = "public" ]; then
+  warn "$REPO is PUBLIC — your settings.json, CLAUDE.md, commands, agents, and skills will be visible to everyone."
+  confirm=""
+  read -r -p "Continue anyway? [y/N]: " confirm
+  [[ "$confirm" =~ ^[Yy]$ ]] || die "aborted — pick or create a private repo instead"
+fi
 
 # ---------------------------------------------------------------------------
 # 4. Clone destination
@@ -135,6 +179,19 @@ read -r -p "Clone path [$default_dir]: " TARGET_DIR
 TARGET_DIR="${TARGET_DIR:-$default_dir}"
 
 if [ -d "$TARGET_DIR/.git" ]; then
+  # Make sure the existing clone is actually $REPO — otherwise `git pull` would
+  # either fail cryptically or silently update the wrong repo.
+  current_url="$(git -C "$TARGET_DIR" remote get-url origin 2>/dev/null || true)"
+  expected_https="https://github.com/$REPO.git"
+  expected_ssh="git@github.com:$REPO.git"
+  expected_https_noext="https://github.com/$REPO"
+  if [ -z "$current_url" ]; then
+    die "$TARGET_DIR has a .git directory but no 'origin' remote — fix the repo or pick a different path"
+  fi
+  case "$current_url" in
+    "$expected_https"|"$expected_ssh"|"$expected_https_noext") ;;
+    *) die "$TARGET_DIR is a git repo but its origin is '$current_url', not '$REPO' — remove it or pick a different path" ;;
+  esac
   info "Existing clone at $TARGET_DIR — pulling"
   (cd "$TARGET_DIR" && git pull --ff-only)
 elif [ -e "$TARGET_DIR" ]; then

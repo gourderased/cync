@@ -6,6 +6,19 @@ set -euo pipefail
 CYNC_DIR="$HOME/.cync"
 CYNC_REPO_URL="https://github.com/gourderased/cync.git"
 
+if ! command -v git >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+xx  git is required but not installed.
+
+    Install it first:
+      macOS:  xcode-select --install   (or: brew install git)
+      Linux:  apt install git          (or: yum install git / pacman -S git)
+
+    Then re-run this installer.
+EOF
+  exit 1
+fi
+
 if [ ! -d "$CYNC_DIR/.git" ]; then
   echo "==> Cloning cync into $CYNC_DIR"
   git clone "$CYNC_REPO_URL" "$CYNC_DIR"

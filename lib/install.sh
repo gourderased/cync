@@ -12,6 +12,7 @@ set -euo pipefail
 
 info() { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!!\033[0m  %s\n' "$*" >&2; }
+die()  { printf '\033[31mxx\033[0m  %s\n' "$*" >&2; exit 1; }
 
 CLAUDE_HOME="$HOME/.claude"
 mkdir -p "$CLAUDE_HOME"
@@ -55,12 +56,14 @@ shell_name="$(basename "${SHELL:-/bin/bash}")"
 case "$shell_name" in
   zsh)  rc_file="$HOME/.zshrc" ;;
   bash) rc_file="$HOME/.bashrc" ;;
-  *)    rc_file="$HOME/.${shell_name}rc" ;;
+  *)    die "unsupported shell: '$shell_name' — cync only supports bash and zsh. Switch \$SHELL or manually source lib/claude-wrapper.sh from your shell's rc file." ;;
 esac
 
 touch "$rc_file"
 
 tmp_rc="$(mktemp)"
+tmp_rc_clean="$tmp_rc.clean"
+trap 'rm -f "$tmp_rc" "$tmp_rc_clean"' EXIT
 
 # 1) strip any existing cync block
 awk '
@@ -70,11 +73,12 @@ awk '
 ' "$rc_file" > "$tmp_rc"
 
 # 2) drop trailing blank lines so the new block sits cleanly at EOF
+# (portable for-loop instead of `while (n--)`, which some older awks choke on)
 awk 'BEGIN{ blanks=0 }
      /^[[:space:]]*$/ { blanks++; next }
-     { while (blanks--) print ""; blanks=0; print }
-' "$tmp_rc" > "$tmp_rc.clean"
-mv "$tmp_rc.clean" "$tmp_rc"
+     { for (i = 0; i < blanks; i++) print ""; blanks = 0; print }
+' "$tmp_rc" > "$tmp_rc_clean"
+mv "$tmp_rc_clean" "$tmp_rc"
 
 # 3) append the managed block
 {
@@ -89,4 +93,5 @@ EOF
 } >> "$tmp_rc"
 
 mv "$tmp_rc" "$rc_file"
+trap - EXIT
 info "updated $rc_file with cync marker block"

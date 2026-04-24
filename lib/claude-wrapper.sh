@@ -4,16 +4,22 @@
 #
 # Sourced from the user's rc file via the cync marker block.
 
+_cync_pull() {
+  # $1 = friendly label for warnings, $2 = repo dir
+  local label="$1" dir="$2" out
+  [ -d "$dir/.git" ] || return 0
+  if ! out="$(cd "$dir" && git pull --ff-only --quiet 2>&1)"; then
+    printf '\033[33m!!  cync: skipping %s auto-sync (%s)\033[0m\n' \
+      "$label" "$(printf '%s' "$out" | head -1)" >&2
+  fi
+}
+
 claude() {
   # 1) self-update the installer
-  if [ -n "${CYNC_DIR:-}" ] && [ -d "$CYNC_DIR/.git" ]; then
-    (cd "$CYNC_DIR" && git pull --ff-only --quiet) >/dev/null 2>&1 || true
-  fi
+  [ -n "${CYNC_DIR:-}" ] && _cync_pull "installer" "$CYNC_DIR"
 
   # 2) update the config repo
-  if [ -n "${_claude_config_repo:-}" ] && [ -d "$_claude_config_repo/.git" ]; then
-    (cd "$_claude_config_repo" && git pull --ff-only --quiet) >/dev/null 2>&1 || true
-  fi
+  [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
 
   # 3) plugin HEAD check + cache invalidation (needs jq)
   _claude_refresh_plugins || true
