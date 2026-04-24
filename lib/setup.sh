@@ -6,8 +6,10 @@ set -euo pipefail
 CYNC_DIR="${CYNC_DIR:-$HOME/.cync}"
 
 # Keep prompts working when invoked via `curl ... | bash` (stdin is the pipe,
-# not a terminal). Reattach stdin to the controlling TTY if available.
-if [ ! -t 0 ] && [ -r /dev/tty ]; then
+# not a terminal). Reattach stdin to the controlling TTY if one is actually
+# openable — the `-r` flag can report yes while the device still fails to open
+# (e.g. inside sandboxes), so probe it in a subshell before redirecting.
+if [ ! -t 0 ] && (exec </dev/tty) 2>/dev/null; then
   exec </dev/tty
 fi
 
