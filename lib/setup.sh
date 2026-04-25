@@ -18,6 +18,19 @@ info()  { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m!!\033[0m  %s\n' "$*" >&2; }
 die()   { printf '\033[31mxx\033[0m  %s\n' "$*" >&2; exit 1; }
 
+# section — print a strong visual divider so each interactive prompt clearly
+# stands apart from the surrounding logs. Modeled on Homebrew/rustup-init style:
+# scrolls (preserves history) but with a heading bar that's hard to miss.
+section() {
+  local title="$*"
+  local rule="================================================================"
+  printf '\n\n'
+  printf '\033[1;36m%s\033[0m\n' "$rule"
+  printf '\033[1;36m  %s\033[0m\n' "$title"
+  printf '\033[1;36m%s\033[0m\n' "$rule"
+  printf '\n'
+}
+
 # ---------------------------------------------------------------------------
 # 1. Prerequisite checks
 # ---------------------------------------------------------------------------
@@ -61,9 +74,10 @@ info "Authenticated as $GH_USER"
 # ---------------------------------------------------------------------------
 # 3. Pick or create the config repo
 # ---------------------------------------------------------------------------
-bold ""
-bold "Select a config repo"
-bold "---------------------"
+section "Pick your config repo"
+echo "  Use an existing repo as your Claude Code config, or create a new"
+echo "  private one. Pick a number, or Q to quit."
+echo
 
 REPOS=()
 while IFS= read -r line; do
@@ -81,9 +95,10 @@ for line in "${REPOS[@]}"; do
 done
 CREATE_IDX=$i
 printf '  [%2d] *** Create new private repo ***\n' "$CREATE_IDX"
-printf '  [ Q] Quit\n\n'
+printf '  [ Q] Quit\n'
+echo
 
-read -r -p "Choice: " choice
+read -r -p "> Choice: " choice
 [ -n "$choice" ] || die "no choice given"
 
 if [[ "$choice" =~ ^[Qq]$ ]]; then
@@ -98,9 +113,14 @@ fi
 REPO_VISIBILITY=""
 
 if [ "$choice" -eq "$CREATE_IDX" ]; then
+  section "Name your new private repo"
+  echo "  Examples: claude-config, my-claude-setup, dotfiles-claude"
+  echo "  Allowed:  letters, digits, '.', '_', '-'  (must start with letter/digit)"
+  echo
+
   repo_name=""
   while [ -z "$repo_name" ]; do
-    read -r -p "Enter a name for your new private repo (e.g. claude-config, my-claude-setup): " repo_name
+    read -r -p "> Repo name: " repo_name
     if [ -z "$repo_name" ]; then
       warn "repo name is required"
       continue
@@ -165,17 +185,26 @@ info "Using config repo: $REPO"
 # CLAUDE.md can contain tokens, usernames, or private prompts they don't
 # want on the open internet.
 if [ "$REPO_VISIBILITY" = "public" ]; then
-  warn "$REPO is PUBLIC — your settings.json, CLAUDE.md, commands, agents, and skills will be visible to everyone."
+  section "⚠  This repo is PUBLIC"
+  echo "  $REPO is publicly visible on GitHub."
+  echo "  Your settings.json, CLAUDE.md, commands, agents, and skills"
+  echo "  will be readable by anyone on the internet."
+  echo
   confirm=""
-  read -r -p "Continue anyway? [y/N]: " confirm
+  read -r -p "> Continue anyway? [y/N]: " confirm
   [[ "$confirm" =~ ^[Yy]$ ]] || die "aborted — pick or create a private repo instead"
 fi
 
 # ---------------------------------------------------------------------------
 # 4. Clone destination
 # ---------------------------------------------------------------------------
+section "Where should this machine clone the repo?"
 default_dir="$HOME/$(basename "$REPO")"
-read -r -p "Clone path [$default_dir]: " TARGET_DIR
+echo "  Default: $default_dir"
+echo "  Press Enter to use the default, or type a different path."
+echo
+
+read -r -p "> Clone path: " TARGET_DIR
 TARGET_DIR="${TARGET_DIR:-$default_dir}"
 
 if [ -d "$TARGET_DIR/.git" ]; then
@@ -213,17 +242,18 @@ bash "$CYNC_DIR/lib/install.sh"
 # ---------------------------------------------------------------------------
 # 6. Done
 # ---------------------------------------------------------------------------
-bold ""
-bold "Done!"
+section "Done — one more step"
 cat <<EOF
+  Reload your shell so the 'claude' wrapper takes effect:
 
-Next step — reload your shell so the 'claude' wrapper is active:
+    source ~/.zshrc       # macOS / zsh
+    source ~/.bashrc      # Linux / bash
 
-  source ~/.zshrc     # macOS / zsh
-  source ~/.bashrc    # Linux / bash
+  Or just open a new terminal. Then:
 
-Then just run:
+    claude
 
-  claude
+  Config repo:  $REPO
+  Clone path:   $TARGET_DIR
 
 EOF
