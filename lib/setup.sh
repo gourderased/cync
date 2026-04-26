@@ -43,16 +43,20 @@ print_install_hint() {
     git)
       cat <<'HINT'
     git
-      macOS:  xcode-select --install   (or: brew install git)
-      Linux:  apt install git          (or: yum install git / pacman -S git)
+      macOS:         xcode-select --install     (or: brew install git)
+      Debian/Ubuntu: sudo apt install git
+      RHEL/Fedora:   sudo dnf install git       (or: sudo yum install git)
+      Arch:          sudo pacman -S git
 HINT
       ;;
     node)
       cat <<'HINT'
     node
-      macOS:  brew install node        (or: nvm install --lts)
-      Linux:  apt install nodejs npm   (or: nvm install --lts)
-      Docs:   https://nodejs.org/
+      macOS:         brew install node          (or: nvm install --lts)
+      Debian/Ubuntu: sudo apt install nodejs npm
+      RHEL/Fedora:   sudo dnf install nodejs npm   (or: sudo yum install nodejs npm)
+      Arch:          sudo pacman -S nodejs npm
+      Universal:     nvm — https://github.com/nvm-sh/nvm
 HINT
       ;;
     claude)
@@ -66,8 +70,17 @@ HINT
     gh)
       cat <<'HINT'
     gh (GitHub CLI)
-      macOS:  brew install gh
-      Linux:  see https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+      macOS:         brew install gh
+      Debian/Ubuntu: sudo mkdir -p -m 755 /etc/apt/keyrings \
+                       && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+                       && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+                       && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+                       && sudo apt update && sudo apt install gh -y
+      RHEL/Fedora:   sudo dnf install -y dnf-plugins-core \
+                       && sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo \
+                       && sudo dnf install -y gh
+      Arch:          sudo pacman -S github-cli
+      Other:         https://github.com/cli/cli/blob/trunk/docs/install_linux.md
 HINT
       ;;
   esac
