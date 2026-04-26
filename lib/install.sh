@@ -59,18 +59,25 @@ if [ ${#real_entries[@]} -gt 0 ] || [ ${#extlink_entries[@]} -gt 0 ]; then
   echo "  Found local settings on this machine that overlap with the config repo:"
   echo
 
-  for e in "${real_entries[@]}"; do
-    if [ -d "$CLAUDE_HOME/$e" ]; then
-      printf '    %-16s (existing directory, will be backed up)\n' "$e/"
-    else
-      printf '    %-16s (existing file, will be backed up)\n' "$e"
-    fi
-  done
-  for entry in "${extlink_entries[@]}"; do
-    name="${entry%%|*}"
-    target="${entry#*|}"
-    printf '    %-16s (symlink → %s, link will be replaced)\n' "$name" "$target"
-  done
+  # bash 3.2 (macOS default) under `set -u` errors on "${empty_array[@]}",
+  # so guard each loop with a length check rather than relying on the
+  # outer `if` to also cover both arrays.
+  if [ ${#real_entries[@]} -gt 0 ]; then
+    for e in "${real_entries[@]}"; do
+      if [ -d "$CLAUDE_HOME/$e" ]; then
+        printf '    %-16s (existing directory, will be backed up)\n' "$e/"
+      else
+        printf '    %-16s (existing file, will be backed up)\n' "$e"
+      fi
+    done
+  fi
+  if [ ${#extlink_entries[@]} -gt 0 ]; then
+    for entry in "${extlink_entries[@]}"; do
+      name="${entry%%|*}"
+      target="${entry#*|}"
+      printf '    %-16s (symlink → %s, link will be replaced)\n' "$name" "$target"
+    done
+  fi
 
   echo
   echo "  These will be replaced with symlinks into your config repo:"

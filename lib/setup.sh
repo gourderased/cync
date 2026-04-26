@@ -137,13 +137,17 @@ done < <(gh repo list --limit 1000 --json nameWithOwner,visibility,description \
   --jq '.[] | "\(.nameWithOwner)\t\(.visibility)\t\(.description // "")"')
 
 i=1
-for line in "${REPOS[@]}"; do
-  name="$(printf '%s' "$line" | cut -f1)"
-  vis="$(printf '%s'  "$line" | cut -f2 | tr '[:upper:]' '[:lower:]')"
-  desc="$(printf '%s' "$line" | cut -f3)"
-  printf '  [%2d] %-40s (%s)%s\n' "$i" "$name" "$vis" "${desc:+  — $desc}"
-  i=$((i+1))
-done
+# Guard against `set -u` blowing up on the @-expansion of an empty array
+# (a fresh GitHub account would have zero repos to list).
+if [ ${#REPOS[@]} -gt 0 ]; then
+  for line in "${REPOS[@]}"; do
+    name="$(printf '%s' "$line" | cut -f1)"
+    vis="$(printf '%s'  "$line" | cut -f2 | tr '[:upper:]' '[:lower:]')"
+    desc="$(printf '%s' "$line" | cut -f3)"
+    printf '  [%2d] %-40s (%s)%s\n' "$i" "$name" "$vis" "${desc:+  — $desc}"
+    i=$((i+1))
+  done
+fi
 CREATE_IDX=$i
 printf '  [%2d] *** Create new private repo ***\n' "$CREATE_IDX"
 printf '  [ Q] Quit\n'
