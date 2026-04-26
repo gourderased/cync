@@ -72,6 +72,31 @@ All three steps fail silently — a network hiccup never blocks `claude` from st
 
 Run the same `curl | bash` line. In the repo menu, pick your existing config repo instead of "Create new". cync clones it, re-creates the same symlinks, and you're done — everything you already set up is active immediately.
 
+## Uninstalling
+
+To undo what cync set up on this machine, run:
+
+```bash
+bash ~/.cync/uninstall
+```
+
+You'll be asked two things:
+
+1. **How should `~/.claude/` end up?**
+   - **Materialize** (recommended): copy the current settings as real files into `~/.claude/`. `claude` keeps using the same configuration — it just stops auto-syncing from GitHub.
+   - **Purge**: just remove the symlinks. `~/.claude/` becomes empty and `claude` starts from defaults next launch.
+2. **Remove the local clone** of your config repo (e.g. `~/claude-config/`)? Default is no.
+
+The uninstaller then:
+
+- Strips the `# BEGIN cync` block from `~/.zshrc` / `~/.bashrc`
+- Removes the symlinks (or materializes them, per your choice above)
+- Removes `~/.claude/plugin-sync-state/`
+- Removes `~/.cync/`
+- Optionally removes the local config repo clone
+
+**Your GitHub config repo is never touched.** Other machines connected to it keep working. You can reinstall any time with the same `curl | bash` line.
+
 ## Requirements
 
 - `git`
@@ -92,7 +117,7 @@ Run the same `curl | bash` line. In the repo menu, pick your existing config rep
 
 **Plugin cache not refreshing.** Make sure `jq` is installed. Without it, `_claude_refresh_plugins` is a no-op.
 
-**Removing cync.** Delete the marker block from your rc file (everything between `# BEGIN cync` and `# END cync`), remove the symlinks in `~/.claude/`, and `rm -rf ~/.cync`. Your config repo is untouched.
+**Removing cync.** Run `bash ~/.cync/uninstall` (see the [Uninstalling](#uninstalling) section above). It's interactive and won't touch your GitHub config repo.
 
 ## License
 
