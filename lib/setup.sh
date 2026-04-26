@@ -342,29 +342,59 @@ section "Where should this machine clone the repo?"
 default_dir="$HOME/$(basename "$REPO")"
 echo "  Default: $default_dir"
 echo "  Press Enter to use the default, or type a different path."
+echo "  (parent directory must already exist; '~' is expanded to $HOME)"
 echo
 
-read -r -p "> Clone path: " TARGET_DIR
-TARGET_DIR="${TARGET_DIR:-$default_dir}"
+# Loop until we get a path we can actually clone into. Reasons to retry:
+#   - parent directory doesn't exist
+#   - target exists but isn't a git repo
+#   - target is a git repo but pointing at a different origin
+# `read` doesn't expand ~ — handle the common ~/foo and ~ cases manually
+# so users don't accidentally end up with a literal '~' directory in CWD.
+TARGET_DIR=""
+while [ -z "$TARGET_DIR" ]; do
+  read -r -p "> Clone path: " input
+  input="${input:-$default_dir}"
 
-if [ -d "$TARGET_DIR/.git" ]; then
-  # Make sure the existing clone is actually $REPO — otherwise `git pull` would
-  # either fail cryptically or silently update the wrong repo.
-  current_url="$(git -C "$TARGET_DIR" remote get-url origin 2>/dev/null || true)"
+  case "$input" in
+    "~")    input="$HOME" ;;
+    "~/"*)  input="$HOME/${input#\~/}" ;;
+  esac
+
   expected_https="https://github.com/$REPO.git"
   expected_ssh="git@github.com:$REPO.git"
   expected_https_noext="https://github.com/$REPO"
-  if [ -z "$current_url" ]; then
-    die "$TARGET_DIR has a .git directory but no 'origin' remote — fix the repo or pick a different path"
+
+  if [ -d "$input/.git" ]; then
+    current_url="$(git -C "$input" remote get-url origin 2>/dev/null || true)"
+    if [ -z "$current_url" ]; then
+      warn "$input has a .git directory but no 'origin' remote — pick another path"
+      continue
+    fi
+    case "$current_url" in
+      "$expected_https"|"$expected_ssh"|"$expected_https_noext") ;;
+      *)
+        warn "$input is a git repo but its origin is '$current_url', not '$REPO' — pick another path"
+        continue
+        ;;
+    esac
+  elif [ -e "$input" ]; then
+    warn "$input already exists and is not a git repo — pick another path"
+    continue
+  else
+    parent="$(dirname "$input")"
+    if [ ! -d "$parent" ]; then
+      warn "parent directory '$parent' doesn't exist — pick a path whose parent already exists"
+      continue
+    fi
   fi
-  case "$current_url" in
-    "$expected_https"|"$expected_ssh"|"$expected_https_noext") ;;
-    *) die "$TARGET_DIR is a git repo but its origin is '$current_url', not '$REPO' — remove it or pick a different path" ;;
-  esac
+
+  TARGET_DIR="$input"
+done
+
+if [ -d "$TARGET_DIR/.git" ]; then
   info "Existing clone at $TARGET_DIR — pulling"
   (cd "$TARGET_DIR" && git pull --ff-only)
-elif [ -e "$TARGET_DIR" ]; then
-  die "$TARGET_DIR already exists and is not a git repo — remove it or pick a different path"
 else
   info "Cloning $REPO into $TARGET_DIR"
   gh repo clone "$REPO" "$TARGET_DIR"
