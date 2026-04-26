@@ -215,8 +215,16 @@ fi
 
 # (2) rc block(s)
 if [ ${#RC_FILES[@]} -gt 0 ]; then
+  # Stage tmp files under ~/.cync/tmp when possible, same reasoning as the
+  # installer side — same filesystem as the rc file so the final mv stays
+  # atomic. The tmp dir gets removed alongside CYNC_DIR a few steps later.
+  mkdir -p "$CYNC_DIR/tmp" 2>/dev/null || true
   for rc in "${RC_FILES[@]}"; do
-    tmp="$(mktemp)"
+    if [ -d "$CYNC_DIR/tmp" ] && [ -w "$CYNC_DIR/tmp" ]; then
+      tmp="$(mktemp "$CYNC_DIR/tmp/rc-XXXXXX")"
+    else
+      tmp="$(mktemp)"
+    fi
     tmp_clean="$tmp.clean"
     awk '
       /^# BEGIN cync/ { skip = 1; next }

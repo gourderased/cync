@@ -130,7 +130,15 @@ esac
 
 touch "$rc_file"
 
-tmp_rc="$(mktemp)"
+# Use ~/.cync/tmp so the temp file lives on the same filesystem as the rc
+# file — that keeps the final `mv` atomic. Fall back to system mktemp if
+# ~/.cync/tmp is somehow unavailable.
+mkdir -p "$CYNC_DIR/tmp" 2>/dev/null || true
+if [ -d "$CYNC_DIR/tmp" ] && [ -w "$CYNC_DIR/tmp" ]; then
+  tmp_rc="$(mktemp "$CYNC_DIR/tmp/rc-XXXXXX")"
+else
+  tmp_rc="$(mktemp)"
+fi
 tmp_rc_clean="$tmp_rc.clean"
 trap 'rm -f "$tmp_rc" "$tmp_rc_clean"' EXIT
 

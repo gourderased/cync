@@ -193,10 +193,69 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
   REPO="$GH_USER/$repo_name"
   REPO_VISIBILITY="private"
 
+  # ---- Seed source: existing ~/.claude vs cync template -----------------
+  # Decide BEFORE creating the GitHub repo so a user who changes their mind
+  # doesn't leave an empty repo on GitHub.
+  CLAUDE_HOME="$HOME/.claude"
+  SEED_MODE="template"
+  SEED_ENTRIES=()
+  for entry in settings.json CLAUDE.md commands agents skills; do
+    src="$CLAUDE_HOME/$entry"
+    # Count real files / real dirs as user content; foreign symlinks are
+    # excluded (they belong to a different system, not the user's claude
+    # settings).
+    if [ -e "$src" ] && [ ! -L "$src" ]; then
+      SEED_ENTRIES+=("$entry")
+    fi
+  done
+
+  if [ ${#SEED_ENTRIES[@]} -gt 0 ]; then
+    section "Seed your new repo"
+    echo "  Found existing Claude Code settings on this machine:"
+    echo
+    for e in "${SEED_ENTRIES[@]}"; do
+      if [ -d "$CLAUDE_HOME/$e" ]; then
+        printf '    %-16s (directory)\n' "$e/"
+      else
+        size="$(wc -c < "$CLAUDE_HOME/$e" 2>/dev/null | tr -d ' ' || echo '?')"
+        printf '    %-16s (file, %s bytes)\n' "$e" "$size"
+      fi
+    done
+    echo
+    echo "  How should we populate the new repo?"
+    echo
+    echo "    [u] Use my existing settings (recommended)"
+    echo "          Pushes the entries above into the new repo as-is."
+    echo "          Missing entries fall back to the cync template."
+    echo "    [t] Use the cync template only"
+    echo "          Empty starter (model=opus, no permissions, no plugins)."
+    echo "          Your existing settings will move to ~/.claude/backups/."
+    echo
+
+    while true; do
+      read -r -p "> Choice [u]: " seed_choice
+      seed_choice="${seed_choice:-u}"
+      case "$seed_choice" in
+        u|U) SEED_MODE="existing"; break ;;
+        t|T) SEED_MODE="template"; break ;;
+        *)   warn "invalid choice '$seed_choice' — type 'u' or 't'" ;;
+      esac
+    done
+  fi
+
   info "Creating $REPO (private)"
   gh repo create "$REPO" --private --description "Claude Code config"
 
-  tmpdir="$(mktemp -d)"
+  # Build the new repo in a scratch dir under ~/.cync so the working tree
+  # stays on the same filesystem as $HOME (atomic ops, fast cp) and gets
+  # picked up by uninstall's CYNC_DIR cleanup. Falls back to system mktemp
+  # if ~/.cync/tmp can't be created for some reason.
+  mkdir -p "$CYNC_DIR/tmp" 2>/dev/null || true
+  if [ -d "$CYNC_DIR/tmp" ] && [ -w "$CYNC_DIR/tmp" ]; then
+    tmpdir="$(mktemp -d "$CYNC_DIR/tmp/build-XXXXXX")"
+  else
+    tmpdir="$(mktemp -d)"
+  fi
   trap 'rm -rf "$tmpdir"' EXIT
 
   # Pick sane commit author: prefer the user's existing git config, then the
@@ -219,20 +278,36 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
     commit_email="${GH_USER}@users.noreply.github.com"
   fi
 
-  info "Populating template files (author: $commit_name <$commit_email>)"
+  info "Populating $REPO (author: $commit_name <$commit_email>)"
   gh repo clone "$REPO" "$tmpdir/repo"
-  # -RLp: recursive, dereference any symlinks, preserve mode/timestamps.
-  # macOS BSD `cp -a` defaults to -pPR which keeps symlinks; spelling out
-  # the flags keeps behavior identical to lib/uninstall.sh's materialize
-  # path and avoids a portability footgun if the template ever grows
-  # symlinks of its own.
+
+  # Always start with the cync template as a base — guarantees every
+  # expected entry exists in the new repo even if the user is missing
+  # some locally. -RLp keeps behavior identical to uninstall's materialize
+  # path (recursive, dereference symlinks, preserve metadata).
   cp -RLp "$CYNC_DIR/template/." "$tmpdir/repo/"
+
+  # If the user picked "existing", override the template entries with
+  # whatever real files / dirs sit in ~/.claude. Whatever they didn't have
+  # locally still benefits from the template fallback.
+  commit_msg="Initial config from cync template"
+  if [ "$SEED_MODE" = "existing" ]; then
+    for entry in "${SEED_ENTRIES[@]}"; do
+      src="$CLAUDE_HOME/$entry"
+      dst="$tmpdir/repo/$entry"
+      rm -rf "$dst"
+      cp -RLp "$src" "$dst"
+      info "  seeded $entry from ~/.claude/"
+    done
+    commit_msg="Initial config seeded from existing ~/.claude (with template fallback)"
+  fi
+
   (
     cd "$tmpdir/repo"
     git add -A
     git -c user.email="$commit_email" \
         -c user.name="$commit_name" \
-        commit -m "Initial config from cync template"
+        commit -m "$commit_msg"
     git push -u origin HEAD
   )
   rm -rf "$tmpdir"
