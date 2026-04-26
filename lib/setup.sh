@@ -246,6 +246,27 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
   info "Creating $REPO (private)"
   gh repo create "$REPO" --private --description "Claude Code config"
 
+  # From this point on, GitHub has a fresh repo. If the user Ctrl+C's
+  # (or anything else aborts setup) before we finish populating it, we
+  # want them to know what's left behind so they can decide whether to
+  # delete it or pick it from the menu next time.
+  CYNC_ORPHAN_REPO="$REPO"
+  CYNC_CLEANUP_TMPDIR=""
+  _cync_orphan_cleanup() {
+    [ -n "${CYNC_CLEANUP_TMPDIR:-}" ] && rm -rf "$CYNC_CLEANUP_TMPDIR" 2>/dev/null
+    if [ -n "${CYNC_ORPHAN_REPO:-}" ]; then
+      {
+        printf '\n\033[33m!!\033[0m  setup was interrupted — these GitHub artifacts may be left behind:\n\n'
+        printf '      https://github.com/%s\n\n' "$CYNC_ORPHAN_REPO"
+        printf '    To re-run setup, just `curl ... | bash` again — the menu will\n'
+        printf '    show this repo and you can pick it (skipping "Create new").\n\n'
+        printf '    To clean it up instead:\n'
+        printf '      gh repo delete %s --yes\n\n' "$CYNC_ORPHAN_REPO"
+      } >&2
+    fi
+  }
+  trap '_cync_orphan_cleanup' EXIT INT TERM
+
   # Build the new repo in a scratch dir under ~/.cync so the working tree
   # stays on the same filesystem as $HOME (atomic ops, fast cp) and gets
   # picked up by uninstall's CYNC_DIR cleanup. Falls back to system mktemp
@@ -256,7 +277,7 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
   else
     tmpdir="$(mktemp -d)"
   fi
-  trap 'rm -rf "$tmpdir"' EXIT
+  CYNC_CLEANUP_TMPDIR="$tmpdir"
 
   # Pick sane commit author: prefer the user's existing git config, then the
   # authenticated GitHub user's profile, then GitHub's noreply email as a
@@ -311,7 +332,12 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
     git push -u origin HEAD
   )
   rm -rf "$tmpdir"
-  trap - EXIT
+  # Push succeeded — the GitHub repo is now in a "good" populated state.
+  # Clear the orphan flag and the cleanup-tmpdir before disarming the trap
+  # so the EXIT handler stays a no-op for the rest of setup.
+  CYNC_ORPHAN_REPO=""
+  CYNC_CLEANUP_TMPDIR=""
+  trap - EXIT INT TERM
 else
   idx=$((choice - 1))
   [ "$idx" -ge 0 ] && [ "$idx" -lt "${#REPOS[@]}" ] || die "choice out of range: $choice"
@@ -378,6 +404,43 @@ while [ -z "$TARGET_DIR" ]; do
         continue
         ;;
     esac
+
+    # Origin matches, but the local clone could still have stale history
+    # — this happens if the remote was deleted and recreated since this
+    # checkout. `git pull --ff-only` would fail with a non-obvious "Not
+    # possible to fast-forward" error, so we detect it up front and let
+    # the user choose how to handle it.
+    info "fetching $input to check for diverged history..."
+    ( cd "$input" && git fetch origin --quiet 2>/dev/null ) || \
+      { warn "fetch failed — network issue or repo no longer accessible"; continue; }
+
+    default_branch="$(git -C "$input" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+    default_branch="${default_branch:-main}"
+
+    local_only="$(git -C "$input" rev-list --count "origin/$default_branch..HEAD" 2>/dev/null || echo 0)"
+
+    if [ "$local_only" -gt 0 ]; then
+      echo
+      warn "$input has $local_only local commit(s) that aren't on origin/$default_branch."
+      warn "this usually means the GitHub repo was deleted and recreated since the clone was made."
+      echo
+      echo "  How should we handle it?"
+      echo "    [r] Reset local to origin/$default_branch  (drops the local commits)"
+      echo "    [p] Pick another path"
+      echo "    [a] Abort"
+      echo
+      div_choice=""
+      read -r -p "> Choice [a]: " div_choice
+      case "${div_choice:-a}" in
+        r|R)
+          info "Resetting $input to origin/$default_branch"
+          ( cd "$input" && git reset --hard "origin/$default_branch" --quiet ) \
+            || { warn "reset failed — pick another path"; continue; }
+          ;;
+        p|P) continue ;;
+        *) die "aborted" ;;
+      esac
+    fi
   elif [ -e "$input" ]; then
     warn "$input already exists and is not a git repo — pick another path"
     continue
