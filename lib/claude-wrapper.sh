@@ -14,15 +14,43 @@ _cync_pull() {
   fi
 }
 
+# Throttle network sync so `claude` doesn't make a round of git pulls and
+# `git ls-remote` calls on every single invocation. Defaults to once per
+# 60 seconds; override with CYNC_SYNC_INTERVAL=<seconds> (use 0 to force
+# every call, or `rm ~/.claude/cync-last-sync` for a one-shot bypass).
+_cync_should_sync() {
+  local marker="$HOME/.claude/cync-last-sync"
+  local interval="${CYNC_SYNC_INTERVAL:-60}"
+  [ "$interval" -le 0 ] 2>/dev/null && return 0
+  [ -f "$marker" ] || return 0
+  local now mtime age
+  now="$(date +%s)"
+  # macOS BSD stat uses -f, GNU stat uses -c. Try both, fall back to 0.
+  mtime="$(stat -f %m "$marker" 2>/dev/null \
+        || stat -c %Y "$marker" 2>/dev/null \
+        || echo 0)"
+  age=$((now - mtime))
+  [ "$age" -ge "$interval" ]
+}
+
+_cync_mark_sync() {
+  mkdir -p "$HOME/.claude" 2>/dev/null || return 0
+  : > "$HOME/.claude/cync-last-sync" 2>/dev/null || true
+}
+
 claude() {
-  # 1) self-update the installer
-  [ -n "${CYNC_DIR:-}" ] && _cync_pull "installer" "$CYNC_DIR"
+  if _cync_should_sync; then
+    # 1) self-update the installer
+    [ -n "${CYNC_DIR:-}" ] && _cync_pull "installer" "$CYNC_DIR"
 
-  # 2) update the config repo
-  [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
+    # 2) update the config repo
+    [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
 
-  # 3) plugin HEAD check + cache invalidation (needs jq)
-  _claude_refresh_plugins || true
+    # 3) plugin HEAD check + cache invalidation (needs jq)
+    _claude_refresh_plugins || true
+
+    _cync_mark_sync
+  fi
 
   # 4) invoke the real claude
   command claude "$@"

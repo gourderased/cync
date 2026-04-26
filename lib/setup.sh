@@ -186,7 +186,12 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
 
   info "Populating template files (author: $commit_name <$commit_email>)"
   gh repo clone "$REPO" "$tmpdir/repo"
-  cp -a "$CYNC_DIR/template/." "$tmpdir/repo/"
+  # -RLp: recursive, dereference any symlinks, preserve mode/timestamps.
+  # macOS BSD `cp -a` defaults to -pPR which keeps symlinks; spelling out
+  # the flags keeps behavior identical to lib/uninstall.sh's materialize
+  # path and avoids a portability footgun if the template ever grows
+  # symlinks of its own.
+  cp -RLp "$CYNC_DIR/template/." "$tmpdir/repo/"
   (
     cd "$tmpdir/repo"
     git add -A
