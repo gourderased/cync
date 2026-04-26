@@ -36,22 +36,38 @@ section() {
 # ---------------------------------------------------------------------------
 info "Checking prerequisites"
 
-for bin in git node claude; do
-  command -v "$bin" >/dev/null 2>&1 || die "required command not found: $bin"
-done
+# require_bin <command> <hint-block>
+# Prints a friendly multi-line hint when the binary is missing, so first-time
+# users know exactly how to install each prerequisite instead of guessing.
+require_bin() {
+  local bin="$1" hint="$2"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    {
+      printf '\033[31mxx\033[0m  %s is required but not installed.\n\n' "$bin"
+      printf '%s\n\n' "$hint"
+      printf '    Then re-run this installer.\n'
+    } >&2
+    exit 1
+  fi
+}
 
-if ! command -v gh >/dev/null 2>&1; then
-  cat >&2 <<'EOF'
-xx  gh (GitHub CLI) is required but not installed.
+require_bin git "    Install:
+      macOS:  xcode-select --install   (or: brew install git)
+      Linux:  apt install git          (or: yum install git / pacman -S git)"
 
-    Install it first:
+require_bin node "    Install via nvm (recommended) or your distro's package:
+      macOS:  brew install node       (or: nvm install --lts)
+      Linux:  apt install nodejs npm  (or: nvm install --lts)
+      Docs:   https://nodejs.org/"
+
+require_bin claude "    Install Claude Code:
+      curl -fsSL https://claude.ai/install.sh | bash
+      (or: npm install -g @anthropic-ai/claude-code)
+      Docs: https://docs.anthropic.com/claude-code"
+
+require_bin gh "    Install GitHub CLI:
       macOS:  brew install gh
-      Linux:  see https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-
-    Then re-run this installer.
-EOF
-  exit 1
-fi
+      Linux:  see https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
 
 if ! command -v jq >/dev/null 2>&1; then
   warn "jq not found — plugin sync will be skipped at runtime (non-fatal)."
@@ -128,6 +144,15 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
     if ! [[ "$repo_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
       warn "invalid repo name '$repo_name' — use letters, digits, '.', '_', '-' and start with letter/digit"
       repo_name=""
+      continue
+    fi
+    # Pre-flight: a repo with this name already on GitHub would make
+    # `gh repo create` fail with a non-obvious error and abort the script.
+    # Catch it here and let the user pick another name.
+    if gh repo view "$GH_USER/$repo_name" >/dev/null 2>&1; then
+      warn "$GH_USER/$repo_name already exists on GitHub — pick a different name (or quit with Ctrl+C and re-run setup to select it from the menu)"
+      repo_name=""
+      continue
     fi
   done
   REPO="$GH_USER/$repo_name"
