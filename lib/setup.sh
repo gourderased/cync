@@ -36,38 +36,73 @@ section() {
 # ---------------------------------------------------------------------------
 info "Checking prerequisites"
 
-# require_bin <command> <hint-block>
-# Prints a friendly multi-line hint when the binary is missing, so first-time
-# users know exactly how to install each prerequisite instead of guessing.
-require_bin() {
-  local bin="$1" hint="$2"
-  if ! command -v "$bin" >/dev/null 2>&1; then
-    {
-      printf '\033[31mxx\033[0m  %s is required but not installed.\n\n' "$bin"
-      printf '%s\n\n' "$hint"
-      printf '    Then re-run this installer.\n'
-    } >&2
-    exit 1
-  fi
-}
-
-require_bin git "    Install:
+# Print the install hint for one prerequisite. Centralizing the text here
+# keeps the loop below readable and lets us reuse the wording.
+print_install_hint() {
+  case "$1" in
+    git)
+      cat <<'HINT'
+    git
       macOS:  xcode-select --install   (or: brew install git)
-      Linux:  apt install git          (or: yum install git / pacman -S git)"
-
-require_bin node "    Install via nvm (recommended) or your distro's package:
-      macOS:  brew install node       (or: nvm install --lts)
-      Linux:  apt install nodejs npm  (or: nvm install --lts)
-      Docs:   https://nodejs.org/"
-
-require_bin claude "    Install Claude Code:
+      Linux:  apt install git          (or: yum install git / pacman -S git)
+HINT
+      ;;
+    node)
+      cat <<'HINT'
+    node
+      macOS:  brew install node        (or: nvm install --lts)
+      Linux:  apt install nodejs npm   (or: nvm install --lts)
+      Docs:   https://nodejs.org/
+HINT
+      ;;
+    claude)
+      cat <<'HINT'
+    claude (Claude Code CLI — needs node first)
       curl -fsSL https://claude.ai/install.sh | bash
       (or: npm install -g @anthropic-ai/claude-code)
-      Docs: https://docs.anthropic.com/claude-code"
-
-require_bin gh "    Install GitHub CLI:
+      Docs: https://docs.anthropic.com/claude-code
+HINT
+      ;;
+    gh)
+      cat <<'HINT'
+    gh (GitHub CLI)
       macOS:  brew install gh
-      Linux:  see https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
+      Linux:  see https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+HINT
+      ;;
+  esac
+}
+
+# Collect every missing required prereq before reporting, so a fresh
+# server only goes through one install round-trip instead of one per
+# missing tool.
+missing=()
+for bin in git node claude gh; do
+  command -v "$bin" >/dev/null 2>&1 || missing+=("$bin")
+done
+
+if [ ${#missing[@]} -gt 0 ]; then
+  joined=""
+  for m in "${missing[@]}"; do
+    [ -n "$joined" ] && joined="$joined, "
+    joined="$joined$m"
+  done
+
+  {
+    if [ ${#missing[@]} -eq 1 ]; then
+      printf '\033[31mxx\033[0m  Missing prerequisite: %s\n\n' "$joined"
+    else
+      printf '\033[31mxx\033[0m  Missing %d prerequisites: %s\n\n' \
+        "${#missing[@]}" "$joined"
+    fi
+    for bin in "${missing[@]}"; do
+      print_install_hint "$bin"
+      echo
+    done
+    printf '    Then re-run this installer.\n'
+  } >&2
+  exit 1
+fi
 
 if ! command -v jq >/dev/null 2>&1; then
   warn "jq not found — plugin sync will be skipped at runtime (non-fatal)."
