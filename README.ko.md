@@ -217,31 +217,6 @@ bash ~/.cync/uninstall
 
 설치 스크립트는 빠진 도구를 모두 모아서 한 번에 보고하므로, fresh 사내 서버도 한 번의 설치 라운드로 끝.
 
-## 트러블슈팅
-
-**`Could not resolve host: raw.githubusercontent.com`** — 회사 네트워크가 GitHub CDN 을 차단. 위 **설치** 섹션의 `git clone https://github.com/gourderased/cync.git ~/.cync` fallback 사용. `github.com` 자체는 거의 차단되지 않음.
-
-**`claude` 가 실제 바이너리만 실행되고 자동 pull 이 없는 것 같음.** 래퍼가 로드 안 된 상태. `grep "BEGIN cync" ~/.zshrc` 확인하고 쉘 리로드. `type claude` 가 "claude is a shell function" 출력해야 정상.
-
-**`claude` 실행이 느림.** 래퍼가 매번 네트워크 가는 중. throttle interval 늘리기:
-```bash
-echo 'export CYNC_SYNC_INTERVAL=600' >> ~/.zshrc   # 10분에 한 번만
-```
-
-**clone path 단계에서 `fatal: Not possible to fast-forward`.** 로컬 clone 에 origin 에 없는 commit 이 있음 (보통 GitHub repo 가 재생성돼서). setup 루프가 이걸 감지하고 `r` reset 옵션 제공 — 그거 선택.
-
-**setup 도중 cancel 했는데 GitHub 에 빈 repo 가 남음.** cync 가 cancel 시 그 URL 을 출력. 정리하려면 `gh repo delete <user>/<repo> --yes` (`delete_repo` scope 필요 — `gh auth refresh -h github.com -s delete_repo`). 또는 그냥 setup 다시 돌려서 메뉴에서 그 repo 선택.
-
-**수동 commit 시 `Author identity unknown`.** setup 끝의 git identity 프롬프트를 skip 했거나 못 봤을 때. 지금 설정:
-```bash
-git config --global user.name  "your-name"
-git config --global user.email "your-email"
-```
-
-**플러그인 cache 가 갱신 안 됨.** `jq` 설치. 없으면 플러그인 sync 단계가 silent skip (다른 동작은 영향 없음).
-
-**잘못된 쉘 rc 파일.** 설치 스크립트는 `$SHELL` 기반으로 `.zshrc` 또는 `.bashrc` 에 기입. 다른 쉘 (fish 등) 은 자동 지원 안 됨 — `$SHELL` 변경하거나 본인 쉘의 rc 에서 `~/.cync/lib/claude-wrapper.sh` 를 수동 source.
-
 ## License
 
 MIT

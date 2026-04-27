@@ -217,31 +217,6 @@ If you already use Claude Code, you almost certainly have `git`, `node`, and `cl
 
 The installer collects all missing tools and reports them in one shot, so a fresh corporate server only needs one round of installs before re-running.
 
-## Troubleshooting
-
-**`Could not resolve host: raw.githubusercontent.com`** — your network blocks GitHub's CDN. Use the `git clone https://github.com/gourderased/cync.git ~/.cync` fallback shown in **Install**. `github.com` itself is rarely blocked.
-
-**`claude` runs the real binary but no auto-pull happens.** The wrapper isn't loaded. Check `grep "BEGIN cync" ~/.zshrc` and reload the shell. `type claude` should print "claude is a shell function".
-
-**`claude` startup feels slow.** Probably the wrapper hitting the network. Bump the throttle interval:
-```bash
-echo 'export CYNC_SYNC_INTERVAL=600' >> ~/.zshrc   # only sync every 10 min
-```
-
-**`fatal: Not possible to fast-forward` during clone path step.** Your local clone has commits not on origin (typically because the GitHub repo was recreated since you cloned it). The setup loop detects this and offers `r` to reset — pick that.
-
-**Setup got cancelled mid-flow and now there's an empty repo on GitHub.** cync prints the URL on cancel. Either `gh repo delete <user>/<repo> --yes` to clean it up (needs the `delete_repo` scope — `gh auth refresh -h github.com -s delete_repo`), or just re-run setup and pick that repo from the menu.
-
-**`Author identity unknown` when committing manually.** You skipped (or didn't see) the git-identity prompt at the end of setup. Set it now:
-```bash
-git config --global user.name  "your-name"
-git config --global user.email "your-email"
-```
-
-**Plugin cache not refreshing.** Install `jq`. Without it, the plugin-sync step is silently skipped (other behavior unaffected).
-
-**Wrong shell rc file.** The installer writes to `.zshrc` or `.bashrc` based on `$SHELL`. Other shells (fish, etc.) aren't auto-supported — switch `$SHELL` or source `~/.cync/lib/claude-wrapper.sh` from your shell's rc file manually.
-
 ## License
 
 MIT
