@@ -490,6 +490,61 @@ info "Running lib/install.sh"
 bash "$CYNC_DIR/lib/install.sh"
 
 # ---------------------------------------------------------------------------
+# 5b. Git identity check
+# ---------------------------------------------------------------------------
+# Without user.name/user.email, the user's first manual commit to the
+# config repo (adding a slash command, editing CLAUDE.md, etc.) dies with
+# "Author identity unknown". cync's own initial-template commit dodged
+# this by passing -c flags inline, but we should help with the rest.
+existing_git_email="$(git config --global user.email 2>/dev/null || true)"
+existing_git_name="$(git config --global user.name 2>/dev/null || true)"
+
+if [ -z "$existing_git_email" ] || [ -z "$existing_git_name" ]; then
+  section "Set up your git identity"
+  echo "  Your global git config is missing user.name and/or user.email."
+  echo "  Without these, manual commits to your config repo (adding"
+  echo "  slash commands, editing CLAUDE.md, etc.) will fail with"
+  echo "  'Author identity unknown'."
+  echo
+
+  # Best-effort fetch from gh — same fallback ladder as the create-new
+  # commit author block: GitHub profile name → login, profile email →
+  # noreply email.
+  gh_name_check="$(gh api user --jq '.name // ""' 2>/dev/null || true)"
+  gh_email_check="$(gh api user --jq '.email // ""' 2>/dev/null || true)"
+  gh_id_check="$(gh api user --jq '.id // empty' 2>/dev/null || true)"
+
+  suggested_name="${existing_git_name:-${gh_name_check:-$GH_USER}}"
+  if [ -n "$existing_git_email" ]; then
+    suggested_email="$existing_git_email"
+  elif [ -n "$gh_email_check" ]; then
+    suggested_email="$gh_email_check"
+  elif [ -n "$gh_id_check" ]; then
+    suggested_email="${gh_id_check}+${GH_USER}@users.noreply.github.com"
+  else
+    suggested_email="${GH_USER}@users.noreply.github.com"
+  fi
+
+  echo "  Use these from your GitHub profile?"
+  echo "    name:  $suggested_name"
+  echo "    email: $suggested_email"
+  echo
+
+  read -r -p "> Set now? [Y/n]: " gitconfig_yn
+  gitconfig_yn="${gitconfig_yn:-y}"
+
+  if [[ "$gitconfig_yn" =~ ^[Yy]$ ]]; then
+    [ -z "$existing_git_name" ]  && git config --global user.name  "$suggested_name"
+    [ -z "$existing_git_email" ] && git config --global user.email "$suggested_email"
+    info "git identity set globally"
+  else
+    warn "skipped — set it later with:"
+    warn "  git config --global user.name  \"$suggested_name\""
+    warn "  git config --global user.email \"$suggested_email\""
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # 6. Done
 # ---------------------------------------------------------------------------
 section "Done — one more step"
