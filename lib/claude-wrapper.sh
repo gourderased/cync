@@ -25,10 +25,17 @@ _cync_should_sync() {
   [ -f "$marker" ] || return 0
   local now mtime age
   now="$(date +%s)"
-  # macOS BSD stat uses -f, GNU stat uses -c. Try both, fall back to 0.
-  mtime="$(stat -f %m "$marker" 2>/dev/null \
-        || stat -c %Y "$marker" 2>/dev/null \
+  # Linux GNU stat first (-c %Y), then macOS BSD (-f %m). Order matters:
+  # GNU stat treats `-f` as "show filesystem info", which "succeeds" but
+  # dumps multi-line FS metadata into mtime, then bash arithmetic chokes
+  # on it. Trying -c first dodges that booby trap, and we sanity-check
+  # the output is purely numeric before using it.
+  mtime="$(stat -c %Y "$marker" 2>/dev/null \
+        || stat -f %m "$marker" 2>/dev/null \
         || echo 0)"
+  case "$mtime" in
+    ''|*[!0-9]*) mtime=0 ;;
+  esac
   age=$((now - mtime))
   [ "$age" -ge "$interval" ]
 }
