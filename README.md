@@ -1,11 +1,59 @@
 # cync
 
+[한국어 README](./README.ko.md)
+
 One-line installer that keeps your [Claude Code](https://docs.anthropic.com/claude-code) configuration in sync across every machine you use.
 
 **Tool** and **data** are deliberately kept separate:
 
 - **Tool (public, shared)** — this repo, `gourderased/cync`. Holds the installer and the `claude` shell wrapper. Everyone installs from the same place.
 - **Data (private, yours)** — your `settings.json`, `CLAUDE.md`, `commands/`, `agents/`, `skills/` live in a private repo on *your* GitHub account. cync just wires it up via symlinks and a shell wrapper.
+
+## How it works
+
+```
+                    ┌──────────────────────────────────────────┐
+                    │  GitHub                                  │
+                    │                                          │
+                    │  gourderased/cync         (PUBLIC)       │  ← installer
+                    │  ├ install / uninstall                   │
+                    │  ├ lib/{setup, install, uninstall,       │
+                    │  │      claude-wrapper}.sh               │
+                    │  └ template/                             │
+                    │                                          │
+                    │  <user>/<config-repo>     (PRIVATE)      │  ← your settings
+                    │  ├ settings.json                         │
+                    │  ├ CLAUDE.md                             │
+                    │  └ commands/  agents/  skills/           │
+                    └────────────────────┬─────────────────────┘
+                                         │
+                                         │  HTTPS via gh CLI
+                                         │
+            ┌─────────────┬──────────────┼──────────────┬─────────────┐
+            ▼             ▼              ▼              ▼             ▼
+       [Machine 1]   [Machine 2]    [Machine 3]      ...        [Machine N]
+
+       ~/.cync/                       installer clone, auto-pulled by wrapper
+       ~/<config-repo>/               private config clone, auto-pulled too
+       ~/.claude/{settings.json,...}    → symlinks into ~/<config-repo>/
+       ~/.zshrc | ~/.bashrc           BEGIN cync block sources the wrapper
+```
+
+Every time you run `claude`, the shell wrapper kicks in first:
+
+```
+$ claude
+   │
+   ▼   throttle: skip if last sync < 60s ago
+   │
+   ▼   git pull ~/.cync                 (latest installer)
+   │   git pull ~/<config-repo>         (latest config from other machines)
+   │   refresh enabled plugins          (HEAD check + cache invalidation)
+   │
+   ▼   command claude "$@"              (real Claude Code CLI takes over)
+```
+
+So when you tweak `settings.json` or add a slash command on one machine and push, the next `claude` on any other machine picks it up automatically — no manual sync, no per-machine drift.
 
 ## Install
 
