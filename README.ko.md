@@ -149,6 +149,26 @@ CYNC_SYNC_INTERVAL=300 claude        # 5분에 한 번만
 
 rc 파일 (cync 블록 밖에) `export CYNC_SYNC_INTERVAL=...` 추가하면 영구 적용.
 
+### 변경사항 push 하기
+
+슬래시 커맨드 추가, `CLAUDE.md` 수정, 서브에이전트 추가 등의 작업을 하면 (심링크 통해) config repo 의 파일이 변경됩니다. 다른 기기로 전파하려면 push 해야 함. `cd ... && git add && git commit && git push` 매번 치기 귀찮으니 두 명령을 wrapper 에 추가:
+
+```bash
+cync-status                        # config repo 의 미커밋 변경사항 보기
+cync-push                          # 자동 메시지: "cync-push from <host> at <time>"
+cync-push "add /foo command"       # 메시지 직접 지정
+```
+
+변경사항 없으면 `nothing to push` 출력하고 깔끔히 종료. push 실패 시 (네트워크 다운, divergent branch 등) 다음 단계 힌트 출력.
+
+진짜 set-and-forget 원하면 `claude` 세션 끝날 때 자동 push 하도록 켜기:
+
+```bash
+export CYNC_AUTO_PUSH=1
+```
+
+설정하면 wrapper 가 claude 종료 후 미커밋 변경사항 검사 → 있으면 자동으로 `cync-push` 실행. 기본값은 off — 본인이 명시적으로 켜야만 동작.
+
 ## 디렉토리 구조
 
 ```

@@ -149,6 +149,26 @@ CYNC_SYNC_INTERVAL=300 claude        # at most every 5 minutes
 
 Add `export CYNC_SYNC_INTERVAL=...` to your rc file (outside the `# BEGIN cync` block) to make it sticky.
 
+### Pushing changes back
+
+When you add a slash command, edit `CLAUDE.md`, or drop a new subagent into `~/.claude/`, those edits land in your config repo (via the symlinks). To propagate them to other machines, you have to push. cync ships two helpers to skip the manual `cd ... && git add && git commit && git push` dance:
+
+```bash
+cync-status                        # show what's uncommitted in your config repo
+cync-push                          # auto-message: "cync-push from <host> at <time>"
+cync-push "add /foo command"       # custom message
+```
+
+`cync-push` exits cleanly with `nothing to push` when the working tree is clean, and surfaces a clear hint if the push failed (network down, diverged branch, etc.).
+
+For full set-and-forget, opt in to auto-push at the end of every `claude` session:
+
+```bash
+export CYNC_AUTO_PUSH=1
+```
+
+When set, the wrapper checks for uncommitted changes after `claude` exits and runs `cync-push` automatically. Off by default — you control timing unless you flip the switch.
+
 ## Layout
 
 ```

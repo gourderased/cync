@@ -61,6 +61,59 @@ claude() {
 
   # 4) invoke the real claude
   command claude "$@"
+  local rc=$?
+
+  # 5) optional auto-push: opt-in via CYNC_AUTO_PUSH=1. Useful when you
+  #    edit slash commands / agents inside the claude session and want
+  #    them propagated to other machines without remembering to commit.
+  if [ "${CYNC_AUTO_PUSH:-0}" = "1" ] \
+     && [ -n "${_claude_config_repo:-}" ] \
+     && [ -d "${_claude_config_repo}/.git" ]; then
+    if [ -n "$(git -C "$_claude_config_repo" status --porcelain 2>/dev/null)" ]; then
+      cync-push "auto-push after claude session on $(hostname)" >/dev/null 2>&1 || \
+        printf '\033[33m!!  cync: auto-push failed — run `cync-push` manually\033[0m\n' >&2
+    fi
+  fi
+
+  return "$rc"
+}
+
+# cync-push — stage, commit, and push everything in your config repo.
+#   cync-push                       # auto message ("cync-push from <host> ...")
+#   cync-push "add /foo command"    # custom message
+# Exits cleanly with no-op message if the working tree is clean.
+cync-push() {
+  local repo="${_claude_config_repo:-}"
+  if [ -z "$repo" ] || [ ! -d "$repo/.git" ]; then
+    printf '\033[31mxx\033[0m  cync: _claude_config_repo not set or not a git repo\n' >&2
+    return 1
+  fi
+
+  if [ -z "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then
+    printf '\033[36m==>\033[0m cync: nothing to push (working tree clean)\n'
+    return 0
+  fi
+
+  local msg="${1:-cync-push from $(hostname) at $(date '+%Y-%m-%d %H:%M:%S')}"
+
+  printf '\033[36m==>\033[0m cync: pushing changes in %s\n' "$repo"
+  if ( cd "$repo" && git add -A && git commit -m "$msg" --quiet && git push --quiet ); then
+    printf '\033[36m==>\033[0m cync: pushed\n'
+  else
+    printf '\033[31mxx\033[0m  cync: push failed (likely diverged or offline) — try `cd %s && git pull --rebase` then retry\n' "$repo" >&2
+    return 1
+  fi
+}
+
+# cync-status — quick view of what's currently uncommitted in the config repo.
+cync-status() {
+  local repo="${_claude_config_repo:-}"
+  if [ -z "$repo" ] || [ ! -d "$repo/.git" ]; then
+    printf '\033[31mxx\033[0m  cync: _claude_config_repo not set or not a git repo\n' >&2
+    return 1
+  fi
+  printf '\033[36m==>\033[0m cync: %s\n' "$repo"
+  git -C "$repo" status --short --branch
 }
 
 _claude_refresh_plugins() {
