@@ -137,21 +137,6 @@ esac
 
 touch "$rc_file"
 
-# Preserve any user-edited CYNC_AUTO_PUSH value across re-installs.
-# If the existing block has it, keep that value; otherwise default to 0.
-existing_auto_push="$(awk '
-  /^# BEGIN cync/ { in_block = 1; next }
-  /^# END cync/   { in_block = 0; next }
-  in_block && /^export CYNC_AUTO_PUSH=/ {
-    s = $0
-    sub(/^export CYNC_AUTO_PUSH="?/, "", s)
-    sub(/"?$/, "", s)
-    print s
-    exit
-  }
-' "$rc_file" 2>/dev/null || true)"
-auto_push_value="${existing_auto_push:-0}"
-
 # Use ~/.cync/tmp so the temp file lives on the same filesystem as the rc
 # file — that keeps the final `mv` atomic. Fall back to system mktemp if
 # ~/.cync/tmp is somehow unavailable.
@@ -179,17 +164,13 @@ awk 'BEGIN{ blanks=0 }
 ' "$tmp_rc" > "$tmp_rc_clean"
 mv "$tmp_rc_clean" "$tmp_rc"
 
-# 3) append the managed block. CYNC_AUTO_PUSH is exposed as 0 by default
-# so users can flip it to 1 in place without hunting for the env-var
-# name in the docs. Sync interval stays implicit (60s default in wrapper).
+# 3) append the managed block.
 {
   [ -s "$tmp_rc" ] && echo ""
   cat <<EOF
 # BEGIN cync (managed by lib/install.sh — do not edit between markers)
 export CYNC_DIR="$CYNC_DIR"
 export _claude_config_repo="$_claude_config_repo"
-# Set to 1 to auto-push your config repo after every \`claude\` session.
-export CYNC_AUTO_PUSH=$auto_push_value
 source "\$CYNC_DIR/lib/claude-wrapper.sh"
 # END cync
 EOF

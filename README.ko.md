@@ -159,16 +159,7 @@ cync-push                          # 자동 메시지: "cync-push from <host> at
 cync-push "add /foo command"       # 메시지 직접 지정
 ```
 
-변경사항 없으면 `nothing to push` 출력하고 깔끔히 종료. push 실패 시 (네트워크 다운, divergent branch 등) 다음 단계 힌트 출력.
-
-진짜 set-and-forget 원하면 `claude` 세션 끝날 때 자동 push 하도록 켜기. 설치 스크립트가 이미 rc 파일의 cync 블록에 `export CYNC_AUTO_PUSH=0` 을 적어둠 — 값만 `1` 로 바꾸면 됩니다:
-
-```bash
-# ~/.zshrc / ~/.bashrc 의 BEGIN cync 블록 안에서:
-export CYNC_AUTO_PUSH=1
-```
-
-쉘 리로드하면 적용. wrapper 가 claude 종료 후 미커밋 변경사항 검사 → 있으면 `cync-push` 자동 실행. 재설치 시 본인이 변경한 값은 보존되므로 한 번 `1` 로 바꾸면 계속 유지.
+변경사항 없으면 `nothing to push` 출력하고 깔끔히 종료. push 실패 시 (네트워크 다운, divergent branch 등) 다음 단계 힌트 출력. 변경을 GitHub 에 올리고 싶을 때 명시적으로 한 번 치면 됨 — 그게 전부.
 
 ## 디렉토리 구조
 

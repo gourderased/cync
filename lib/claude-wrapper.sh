@@ -61,21 +61,6 @@ claude() {
 
   # 4) invoke the real claude
   command claude "$@"
-  local rc=$?
-
-  # 5) optional auto-push: opt-in via CYNC_AUTO_PUSH=1. Useful when you
-  #    edit slash commands / agents inside the claude session and want
-  #    them propagated to other machines without remembering to commit.
-  if [ "${CYNC_AUTO_PUSH:-0}" = "1" ] \
-     && [ -n "${_claude_config_repo:-}" ] \
-     && [ -d "${_claude_config_repo}/.git" ]; then
-    if [ -n "$(git -C "$_claude_config_repo" status --porcelain 2>/dev/null)" ]; then
-      cync-push "auto-push after claude session on $(hostname)" >/dev/null 2>&1 || \
-        printf '\033[33m!!  cync: auto-push failed — run `cync-push` manually\033[0m\n' >&2
-    fi
-  fi
-
-  return "$rc"
 }
 
 # cync-push — stage, commit, and push everything in your config repo.
