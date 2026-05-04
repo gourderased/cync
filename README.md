@@ -161,13 +161,14 @@ cync-push "add /foo command"       # custom message
 
 `cync-push` exits cleanly with `nothing to push` when the working tree is clean, and surfaces a clear hint if the push failed (network down, diverged branch, etc.).
 
-For full set-and-forget, opt in to auto-push at the end of every `claude` session:
+For full set-and-forget, opt in to auto-push at the end of every `claude` session. The installer already writes `export CYNC_AUTO_PUSH=0` into the managed cync block in your rc file — flip the value to `1` in place:
 
 ```bash
+# In ~/.zshrc / ~/.bashrc, inside the BEGIN cync block:
 export CYNC_AUTO_PUSH=1
 ```
 
-When set, the wrapper checks for uncommitted changes after `claude` exits and runs `cync-push` automatically. Off by default — you control timing unless you flip the switch.
+Reload the shell. The wrapper will check for uncommitted changes after every `claude` exit and run `cync-push` automatically. Re-running the installer preserves your edited value, so flipping to `1` is sticky.
 
 ## Layout
 
