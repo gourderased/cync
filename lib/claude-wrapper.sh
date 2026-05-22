@@ -53,7 +53,7 @@ claude() {
     # 2) update the config repo
     [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
 
-    # 3) plugin HEAD check + cache invalidation (needs jq)
+    # 3) plugin upstream-update check — notify only (needs jq)
     _claude_refresh_plugins || true
 
     _cync_mark_sync
@@ -101,6 +101,15 @@ cync-status() {
   git -C "$repo" status --short --branch
 }
 
+# _claude_refresh_plugins — notify (never touch) when an enabled plugin's
+# upstream HEAD has moved.
+#
+# History: cync used to `rm -rf` the plugin's cache dir here on a SHA change,
+# assuming Claude Code would re-install it. It doesn't — installed_plugins.json
+# kept saying "installed" while the cache was gone, so the plugin (e.g. a
+# statusline) silently broke until a manual reinstall. Plugin install/cache is
+# Claude Code's own responsibility; cync only surfaces "an update exists" and
+# lets the user run `/plugin update` on their own schedule. No destructive ops.
 _claude_refresh_plugins() {
   command -v jq >/dev/null 2>&1 || return 0
 
@@ -108,14 +117,13 @@ _claude_refresh_plugins() {
   [ -r "$settings" ] || return 0
 
   local state_dir="$HOME/.claude/plugin-sync-state"
-  local cache_dir="$HOME/.claude/plugins/cache"
-  mkdir -p "$state_dir"
+  mkdir -p "$state_dir" 2>/dev/null || return 0
 
   local plugins
   plugins="$(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key' "$settings" 2>/dev/null)" || return 0
   [ -n "$plugins" ] || return 0
 
-  local entry name marketplace repo remote_head local_head
+  local entry name marketplace repo remote_head local_head marker
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
     name="${entry%@*}"
@@ -133,15 +141,17 @@ _claude_refresh_plugins() {
     remote_head="$(git ls-remote "https://github.com/$repo.git" HEAD 2>/dev/null | awk '{print $1; exit}')"
     [ -n "$remote_head" ] || continue
 
-    local marker="$state_dir/$name@$marketplace"
+    marker="$state_dir/$name@$marketplace"
     local_head=""
     [ -r "$marker" ] && local_head="$(cat "$marker" 2>/dev/null || true)"
 
-    if [ "$remote_head" != "$local_head" ]; then
-      if [ -d "$cache_dir/$name" ]; then
-        rm -rf "$cache_dir/$name"
-      fi
-      printf '%s\n' "$remote_head" > "$marker"
+    # Only notify when we have a prior baseline AND it moved — never on the
+    # first run (no baseline to compare). Update the marker either way so the
+    # notice fires once per upstream change, not on every claude launch.
+    if [ -n "$local_head" ] && [ "$remote_head" != "$local_head" ]; then
+      printf '\033[36m==>\033[0m cync: %s has an upstream update (%s -> %s) — run `/plugin update` inside claude to refresh\n' \
+        "$entry" "${local_head:0:7}" "${remote_head:0:7}" >&2
     fi
+    printf '%s\n' "$remote_head" > "$marker"
   done <<< "$plugins"
 }

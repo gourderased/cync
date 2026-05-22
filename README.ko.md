@@ -48,7 +48,7 @@ $ claude
    │
    ▼   git pull ~/.cync                 (설치 도구 최신화)
    │   git pull ~/<config-repo>         (다른 기기의 설정 변경 가져옴)
-   │   플러그인 HEAD 체크 + cache invalidation
+   │   플러그인 HEAD 체크 (변경 시 안내만)
    │
    ▼   command claude "$@"              (실제 Claude Code CLI 실행)
 ```
@@ -128,7 +128,7 @@ cync 가 GitHub 프로필에서 가져온 값으로 자동 설정 제안. 이게
 
 1. `~/.cync` 에서 `git pull --ff-only` (설치 도구 최신화).
 2. config repo 에서 `git pull --ff-only` (다른 기기의 변경 가져옴).
-3. `settings.json → enabledPlugins` 의 각 플러그인 HEAD 체크. 원격이 변경됐으면 `~/.claude/plugins/cache/` 에서 그 플러그인 제거 → 다음 실행 시 Claude Code 가 재설치.
+3. `settings.json → enabledPlugins` 의 각 플러그인 HEAD 체크. 원격이 변경됐으면 `/plugin update` 를 권하는 안내 한 줄만 출력 — 플러그인 cache 나 registry 는 직접 건드리지 않음 (그건 Claude Code 의 몫).
 
 위 네트워크 작업이 실패하면 (오프라인, 느림, 차단) 노란 경고 한 줄만 출력하고 계속 진행 — `claude` 자체는 정상 실행.
 

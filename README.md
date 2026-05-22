@@ -48,7 +48,7 @@ $ claude
    │
    ▼   git pull ~/.cync                 (latest installer)
    │   git pull ~/<config-repo>         (latest config from other machines)
-   │   refresh enabled plugins          (HEAD check + cache invalidation)
+   │   check enabled plugins            (HEAD check, notify on update)
    │
    ▼   command claude "$@"              (real Claude Code CLI takes over)
 ```
@@ -128,7 +128,7 @@ Just run `claude`. Before invoking the real binary, the wrapper:
 
 1. `git pull --ff-only` on `~/.cync` (keeps the installer up-to-date).
 2. `git pull --ff-only` on your config repo (picks up changes from other machines).
-3. Checks `HEAD` of every plugin listed in `settings.json → enabledPlugins`. If a plugin's upstream has moved, its cached copy in `~/.claude/plugins/cache/` is wiped so Claude Code re-installs it on next launch.
+3. Checks `HEAD` of every plugin listed in `settings.json → enabledPlugins`. If a plugin's upstream has moved, cync prints a one-line notice suggesting `/plugin update` — it never touches the plugin cache or registry itself (that's Claude Code's job).
 
 If any network call fails (offline, slow, blocked), the wrapper prints a one-line yellow warning and continues — `claude` itself still launches.
 
