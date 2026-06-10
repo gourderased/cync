@@ -282,7 +282,8 @@ cync-doctor() {
   return "$fail"
 }
 
-# cync-status — quick view of what's currently uncommitted in the config repo.
+# cync-status — quick view of the config repo: uncommitted work, how far
+# ahead/behind the remote we are (after a fetch), and what landed recently.
 cync-status() {
   local repo="${_claude_config_repo:-}"
   if [ -z "$repo" ] || [ ! -d "$repo/.git" ]; then
@@ -290,7 +291,13 @@ cync-status() {
     return 1
   fi
   printf '\033[36m==>\033[0m cync: %s\n' "$repo"
+  # Fetch so the ahead/behind counts below reflect the actual remote, not
+  # whatever we last happened to pull. Stale view is better than no view.
+  git -C "$repo" fetch --quiet 2>/dev/null \
+    || printf '\033[33m!!\033[0m  fetch failed (offline?) — counts below may be stale\n' >&2
   git -C "$repo" status --short --branch
+  printf '\033[36m==>\033[0m recent commits:\n'
+  git -C "$repo" log --oneline -3 2>/dev/null
 }
 
 # _claude_refresh_plugins — notify (never touch) when an enabled plugin's
