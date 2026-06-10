@@ -88,27 +88,41 @@ _cync_push_reminder() {
   return 0
 }
 
+# _cync_do_sync — one full sync round, shared by claude() and cync-sync.
+_cync_do_sync() {
+  # Mark first so a second `claude` started moments later skips straight
+  # to the binary instead of racing this shell's git pulls.
+  _cync_mark_sync
+
+  # 1) self-update the installer
+  [ -n "${CYNC_DIR:-}" ] && _cync_pull "installer" "$CYNC_DIR"
+
+  # 2) update the config repo
+  [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
+
+  # 3) plugin upstream-update check — notify only (needs jq)
+  _claude_refresh_plugins || true
+
+  # 4) nudge if local config changes haven't been pushed yet
+  _cync_push_reminder
+  return 0
+}
+
 claude() {
   if _cync_should_sync; then
-    # Mark first so a second `claude` started moments later skips straight
-    # to the binary instead of racing this shell's git pulls.
-    _cync_mark_sync
-
-    # 1) self-update the installer
-    [ -n "${CYNC_DIR:-}" ] && _cync_pull "installer" "$CYNC_DIR"
-
-    # 2) update the config repo
-    [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
-
-    # 3) plugin upstream-update check — notify only (needs jq)
-    _claude_refresh_plugins || true
-
-    # 4) nudge if local config changes haven't been pushed yet
-    _cync_push_reminder
+    _cync_do_sync
   fi
 
-  # 5) invoke the real claude
+  # invoke the real claude
   command claude "$@"
+}
+
+# cync-sync — force a sync round right now, ignoring the throttle. Handy
+# right after pushing from another machine (beats the old workaround of
+# `rm ~/.claude/cync-last-sync` + relaunching claude).
+cync-sync() {
+  _cync_do_sync
+  printf '\033[36m==>\033[0m cync: sync complete\n'
 }
 
 # cync-push — stage, commit, and push everything in your config repo.
