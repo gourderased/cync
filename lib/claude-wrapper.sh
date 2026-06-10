@@ -8,9 +8,16 @@ _cync_pull() {
   # $1 = friendly label for warnings, $2 = repo dir
   local label="$1" dir="$2" out
   [ -d "$dir/.git" ] || return 0
-  if ! out="$(cd "$dir" && git pull --ff-only --quiet 2>&1)"; then
+  if ! out="$(git -C "$dir" pull --ff-only --quiet 2>&1)"; then
     printf '\033[33m!!  cync: skipping %s auto-sync (%s)\033[0m\n' \
       "$label" "$(printf '%s' "$out" | head -1)" >&2
+    # Detached HEAD / no upstream fails on every launch — tell the user how
+    # to actually silence it instead of warning forever.
+    case "$out" in
+      *"not currently on a branch"*|*"no tracking information"*)
+        printf '\033[33m!!  cync: %s has no upstream branch — check out a tracking branch (e.g. `git -C %s checkout main`) to stop this warning\033[0m\n' \
+          "$label" "$dir" >&2 ;;
+    esac
   fi
 }
 
@@ -21,7 +28,12 @@ _cync_pull() {
 _cync_should_sync() {
   local marker="$HOME/.claude/cync-last-sync"
   local interval="${CYNC_SYNC_INTERVAL:-60}"
-  [ "$interval" -le 0 ] 2>/dev/null && return 0
+  # Non-numeric override (typo etc.) falls back to the default instead of
+  # spraying arithmetic errors on every `claude` launch.
+  case "$interval" in
+    ''|*[!0-9]*) interval=60 ;;
+  esac
+  [ "$interval" -eq 0 ] && return 0
   [ -f "$marker" ] || return 0
   local now mtime age
   now="$(date +%s)"
@@ -47,6 +59,10 @@ _cync_mark_sync() {
 
 claude() {
   if _cync_should_sync; then
+    # Mark first so a second `claude` started moments later skips straight
+    # to the binary instead of racing this shell's git pulls.
+    _cync_mark_sync
+
     # 1) self-update the installer
     [ -n "${CYNC_DIR:-}" ] && _cync_pull "installer" "$CYNC_DIR"
 
@@ -55,8 +71,6 @@ claude() {
 
     # 3) plugin upstream-update check — notify only (needs jq)
     _claude_refresh_plugins || true
-
-    _cync_mark_sync
   fi
 
   # 4) invoke the real claude
@@ -74,7 +88,30 @@ cync-push() {
     return 1
   fi
 
+  # Catch a missing git identity up front — otherwise `git commit` fails with
+  # an error this function used to misreport as "diverged or offline".
+  if [ -z "$(git -C "$repo" config user.email 2>/dev/null)" ] \
+  || [ -z "$(git -C "$repo" config user.name 2>/dev/null)" ]; then
+    printf '\033[31mxx\033[0m  cync: git identity not set — run `git config --global user.name "You"` and `git config --global user.email you@example.com` first\n' >&2
+    return 1
+  fi
+
   if [ -z "$(git -C "$repo" status --porcelain 2>/dev/null)" ]; then
+    # Tree is clean, but an earlier run may have committed and then failed to
+    # push (offline) — without this check that commit would sit unpushed
+    # forever while cync-push keeps saying "nothing to push".
+    local ahead
+    ahead="$(git -C "$repo" rev-list --count '@{upstream}..HEAD' 2>/dev/null || echo 0)"
+    case "$ahead" in ''|*[!0-9]*) ahead=0 ;; esac
+    if [ "$ahead" -gt 0 ]; then
+      printf '\033[36m==>\033[0m cync: nothing new to commit — pushing %s earlier unpushed commit(s)\n' "$ahead"
+      if git -C "$repo" push --quiet; then
+        printf '\033[36m==>\033[0m cync: pushed\n'
+        return 0
+      fi
+      printf '\033[31mxx\033[0m  cync: push failed (offline or diverged) — run `git -C %s pull --rebase` then retry\n' "$repo" >&2
+      return 1
+    fi
     printf '\033[36m==>\033[0m cync: nothing to push (working tree clean)\n'
     return 0
   fi
@@ -82,10 +119,14 @@ cync-push() {
   local msg="${1:-cync-push from $(hostname) at $(date '+%Y-%m-%d %H:%M:%S')}"
 
   printf '\033[36m==>\033[0m cync: pushing changes in %s\n' "$repo"
-  if ( cd "$repo" && git add -A && git commit -m "$msg" --quiet && git push --quiet ); then
+  if ! git -C "$repo" add -A || ! git -C "$repo" commit -m "$msg" --quiet; then
+    printf '\033[31mxx\033[0m  cync: commit failed — fix the git error above and retry\n' >&2
+    return 1
+  fi
+  if git -C "$repo" push --quiet; then
     printf '\033[36m==>\033[0m cync: pushed\n'
   else
-    printf '\033[31mxx\033[0m  cync: push failed (likely diverged or offline) — try `cd %s && git pull --rebase` then retry\n' "$repo" >&2
+    printf '\033[31mxx\033[0m  cync: committed locally but push failed (offline or diverged) — your changes are safe; run `git -C %s pull --rebase` then `cync-push` again\n' "$repo" >&2
     return 1
   fi
 }
@@ -126,8 +167,10 @@ _claude_refresh_plugins() {
   local entry name marketplace repo remote_head local_head marker
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
+    # Split on the LAST `@`: marketplace names can't contain `@`, but a
+    # plugin name theoretically could — `#*@` would mis-split `a@b@c`.
     name="${entry%@*}"
-    marketplace="${entry#*@}"
+    marketplace="${entry##*@}"
 
     repo="$(jq -r --arg m "$marketplace" '
       (.extraKnownMarketplaces // {})[$m]

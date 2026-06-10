@@ -367,7 +367,10 @@ info "Using config repo: $REPO"
 # Warn loudly if the user pointed cync at a public repo — settings and
 # CLAUDE.md can contain tokens, usernames, or private prompts they don't
 # want on the open internet.
-if [ "$REPO_VISIBILITY" = "public" ]; then
+# Substring match: gh has reported visibility as both "public" and
+# "PUBLIC" (and could grow qualifiers) — never miss this safety warning
+# over an exact-match mismatch.
+case "$REPO_VISIBILITY" in *public*)
   section "⚠  This repo is PUBLIC"
   echo "  $REPO is publicly visible on GitHub."
   echo "  Your settings.json, CLAUDE.md, commands, agents, and skills"
@@ -376,7 +379,8 @@ if [ "$REPO_VISIBILITY" = "public" ]; then
   confirm=""
   read -r -p "> Continue anyway? [y/N]: " confirm
   [[ "$confirm" =~ ^[Yy]$ ]] || die "aborted — pick or create a private repo instead"
-fi
+  ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 4. Clone destination

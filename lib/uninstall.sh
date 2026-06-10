@@ -96,7 +96,10 @@ fi
 get_repo_name() {
   local url="$1"
   url="${url%.git}"
-  url="${url##*github.com[:/]}"
+  case "$url" in
+    *github.com:*) url="${url##*github.com:}" ;;  # git@github.com:owner/repo
+    *github.com/*) url="${url##*github.com/}" ;;  # https://github.com/owner/repo
+  esac
   printf '%s' "$url"
 }
 REPO_NAME=""
