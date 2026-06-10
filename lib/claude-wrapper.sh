@@ -6,8 +6,9 @@
 
 _cync_pull() {
   # $1 = friendly label for warnings, $2 = repo dir
-  local label="$1" dir="$2" out
+  local label="$1" dir="$2" out before after
   [ -d "$dir/.git" ] || return 0
+  before="$(git -C "$dir" rev-parse HEAD 2>/dev/null)"
   if ! out="$(git -C "$dir" pull --ff-only --quiet 2>&1)"; then
     printf '\033[33m!!  cync: skipping %s auto-sync (%s)\033[0m\n' \
       "$label" "$(printf '%s' "$out" | head -1)" >&2
@@ -18,6 +19,17 @@ _cync_pull() {
         printf '\033[33m!!  cync: %s has no upstream branch — check out a tracking branch (e.g. `git -C %s checkout main`) to stop this warning\033[0m\n' \
           "$label" "$dir" >&2 ;;
     esac
+    return 0
+  fi
+  # Say what just arrived — silent syncing makes "why did my settings
+  # change?" a mystery. Quiet when nothing was pulled (the common case).
+  after="$(git -C "$dir" rev-parse HEAD 2>/dev/null)"
+  if [ -n "$before" ] && [ -n "$after" ] && [ "$before" != "$after" ]; then
+    local n files
+    n="$(git -C "$dir" rev-list --count "$before..$after" 2>/dev/null || echo '?')"
+    files="$(git -C "$dir" diff --name-only "$before" "$after" 2>/dev/null | head -5 | tr '\n' ' ')"
+    printf '\033[36m==>\033[0m cync: %s updated (%s commit(s)): %s\n' \
+      "$label" "$n" "${files% }" >&2
   fi
 }
 
