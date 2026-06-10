@@ -57,6 +57,25 @@ _cync_mark_sync() {
   : > "$HOME/.claude/cync-last-sync" 2>/dev/null || true
 }
 
+# _cync_push_reminder — one-line nudge when the config repo has local work
+# other machines can't see yet (uncommitted changes or unpushed commits).
+# Local-only checks, no network. Runs on the throttled sync path so it
+# doesn't nag on every single launch.
+_cync_push_reminder() {
+  local repo="${_claude_config_repo:-}"
+  { [ -n "$repo" ] && [ -d "$repo/.git" ]; } || return 0
+  local dirty ahead
+  dirty="$(git -C "$repo" status --porcelain 2>/dev/null | grep -c .)"
+  ahead="$(git -C "$repo" rev-list --count '@{upstream}..HEAD' 2>/dev/null || echo 0)"
+  case "$dirty" in ''|*[!0-9]*) dirty=0 ;; esac
+  case "$ahead" in ''|*[!0-9]*) ahead=0 ;; esac
+  if [ "$dirty" -gt 0 ] || [ "$ahead" -gt 0 ]; then
+    printf '\033[33m!!  cync: config repo has %s uncommitted change(s), %s unpushed commit(s) — run `cync-push` so other machines pick them up\033[0m\n' \
+      "$dirty" "$ahead" >&2
+  fi
+  return 0
+}
+
 claude() {
   if _cync_should_sync; then
     # Mark first so a second `claude` started moments later skips straight
@@ -71,9 +90,12 @@ claude() {
 
     # 3) plugin upstream-update check — notify only (needs jq)
     _claude_refresh_plugins || true
+
+    # 4) nudge if local config changes haven't been pushed yet
+    _cync_push_reminder
   fi
 
-  # 4) invoke the real claude
+  # 5) invoke the real claude
   command claude "$@"
 }
 
