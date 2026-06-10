@@ -179,6 +179,109 @@ cync-push() {
   fi
 }
 
+# cync-doctor — read-only health check of the whole cync wiring. One line
+# per check (ok / !! warning / xx broken); exits non-zero when something
+# is actually broken. Touches nothing; the only network call is one
+# `git ls-remote` to test reachability.
+cync-doctor() {
+  # NB: never `local path` here — in zsh `path` is tied to $PATH, and making
+  # it local empties PATH for the whole function (every external command
+  # becomes "not found").
+  local repo="${_claude_config_repo:-}" fail=0 name link target
+
+  # 1) env wiring
+  if [ -n "${CYNC_DIR:-}" ] && [ -d "${CYNC_DIR:-}" ]; then
+    printf '\033[32mok\033[0m  CYNC_DIR → %s\n' "$CYNC_DIR"
+  else
+    printf '\033[31mxx\033[0m  CYNC_DIR unset or missing — re-run the cync installer\n'; fail=$((fail+1))
+  fi
+  if [ -n "$repo" ] && [ -d "$repo/.git" ]; then
+    printf '\033[32mok\033[0m  config repo → %s\n' "$repo"
+  else
+    printf '\033[31mxx\033[0m  _claude_config_repo unset or not a git repo (%s)\n' "${repo:-empty}"; fail=$((fail+1))
+    repo=""
+  fi
+
+  # 2) rc-file marker block
+  if grep -qs 'BEGIN cync' "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null; then
+    printf '\033[32mok\033[0m  cync block present in rc file\n'
+  else
+    printf '\033[31mxx\033[0m  no cync marker block in ~/.zshrc or ~/.bashrc — wrapper won'\''t load in new shells\n'; fail=$((fail+1))
+  fi
+
+  # 3) ~/.claude symlinks point into the config repo
+  for name in settings.json CLAUDE.md commands agents skills; do
+    link="$HOME/.claude/$name"
+    if [ ! -L "$link" ]; then
+      printf '\033[31mxx\033[0m  ~/.claude/%s is not a symlink — machine is detached from the config repo for this file\n' "$name"; fail=$((fail+1))
+    elif [ ! -e "$link" ]; then
+      printf '\033[31mxx\033[0m  ~/.claude/%s is a BROKEN symlink (target missing)\n' "$name"; fail=$((fail+1))
+    else
+      target="$(readlink "$link")"
+      if [ -n "$repo" ]; then
+        case "$target" in
+          "$repo"|"$repo"/*) printf '\033[32mok\033[0m  ~/.claude/%s → repo\n' "$name" ;;
+          *) printf '\033[33m!!\033[0m  ~/.claude/%s points outside the config repo (%s)\n' "$name" "$target" ;;
+        esac
+      else
+        printf '\033[32mok\033[0m  ~/.claude/%s is a symlink (repo unknown, target unchecked)\n' "$name"
+      fi
+    fi
+  done
+
+  # 4) repo branch health + local state
+  if [ -n "$repo" ]; then
+    if ! git -C "$repo" symbolic-ref -q HEAD >/dev/null 2>&1; then
+      printf '\033[31mxx\033[0m  config repo is on a detached HEAD — auto-sync can'\''t fast-forward; `git -C %s checkout main`\n' "$repo"; fail=$((fail+1))
+    elif ! git -C "$repo" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+      printf '\033[31mxx\033[0m  config repo branch has no upstream — `git -C %s branch --set-upstream-to origin/main`\n' "$repo"; fail=$((fail+1))
+    else
+      printf '\033[32mok\033[0m  config repo on a tracking branch (%s)\n' "$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+    fi
+    local dirty ahead
+    dirty="$(git -C "$repo" status --porcelain 2>/dev/null | grep -c .)"
+    ahead="$(git -C "$repo" rev-list --count '@{upstream}..HEAD' 2>/dev/null || echo 0)"
+    case "$dirty" in ''|*[!0-9]*) dirty=0 ;; esac
+    case "$ahead" in ''|*[!0-9]*) ahead=0 ;; esac
+    if [ "$dirty" -gt 0 ] || [ "$ahead" -gt 0 ]; then
+      printf '\033[33m!!\033[0m  unsynced local work: %s uncommitted, %s unpushed — run `cync-push`\n' "$dirty" "$ahead"
+    else
+      printf '\033[32mok\033[0m  no unsynced local work\n'
+    fi
+    # 5) remote reachability (the one network call)
+    if git -C "$repo" ls-remote --exit-code origin HEAD >/dev/null 2>&1; then
+      printf '\033[32mok\033[0m  remote reachable\n'
+    else
+      printf '\033[33m!!\033[0m  remote unreachable (offline, or credentials expired?) — pulls/pushes will fail until this recovers\n'
+    fi
+  fi
+
+  # 6) optional tooling
+  if command -v jq >/dev/null 2>&1; then
+    printf '\033[32mok\033[0m  jq installed (plugin update notices active)\n'
+  else
+    printf '\033[33m!!\033[0m  jq missing — plugin update notices are silently disabled\n'
+  fi
+
+  # 7) sync marker age
+  local marker="$HOME/.claude/cync-last-sync" mtime age
+  if [ -f "$marker" ]; then
+    mtime="$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0)"
+    case "$mtime" in ''|*[!0-9]*) mtime=0 ;; esac
+    age=$(( $(date +%s) - mtime ))
+    printf '\033[32mok\033[0m  last sync attempt %ss ago (throttle: %ss)\n' "$age" "${CYNC_SYNC_INTERVAL:-60}"
+  else
+    printf '\033[33m!!\033[0m  no sync marker — next `claude` (or `cync-sync`) will sync\n'
+  fi
+
+  if [ "$fail" -eq 0 ]; then
+    printf '\033[36m==>\033[0m cync: healthy\n'
+  else
+    printf '\033[31mxx\033[0m  cync: %s problem(s) found above\n' "$fail" >&2
+  fi
+  return "$fail"
+}
+
 # cync-status — quick view of what's currently uncommitted in the config repo.
 cync-status() {
   local repo="${_claude_config_repo:-}"
