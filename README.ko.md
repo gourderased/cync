@@ -137,8 +137,8 @@ cync 가 GitHub 프로필에서 가져온 값으로 자동 설정 제안. 이게
 매번 `claude` 호출마다 네트워크 가지 않도록 throttle. 마지막 sync 가 60초 이내면 다음 `claude` 는 네트워크 skip.
 
 ```bash
-# 한 번만 throttle 우회
-rm ~/.claude/cync-last-sync && claude
+# 한 번만 throttle 우회 (claude 실행 없이 지금 바로 sync)
+cync-sync
 
 # 항상 sync (throttle 끔)
 CYNC_SYNC_INTERVAL=0 claude
@@ -154,12 +154,16 @@ rc 파일 (cync 블록 밖에) `export CYNC_SYNC_INTERVAL=...` 추가하면 영�
 슬래시 커맨드 추가, `CLAUDE.md` 수정, 서브에이전트 추가 등의 작업을 하면 (심링크 통해) config repo 의 파일이 변경됩니다. 다른 기기로 전파하려면 push 해야 함. `cd ... && git add && git commit && git push` 매번 치기 귀찮으니 두 명령을 wrapper 에 추가:
 
 ```bash
-cync-status                        # config repo 의 미커밋 변경사항 보기
+cync-status                        # 미커밋 변경 + remote 대비 ahead/behind + 최근 커밋
 cync-push                          # 자동 메시지: "cync-push from <host> at <time>"
 cync-push "add /foo command"       # 메시지 직접 지정
+cync-sync                          # throttle 무시하고 지금 바로 전부 pull
+cync-doctor                        # 전체 연결 상태 read-only 점검
 ```
 
-변경사항 없으면 `nothing to push` 출력하고 깔끔히 종료. push 실패 시 (네트워크 다운, divergent branch 등) 다음 단계 힌트 출력. 변경을 GitHub 에 올리고 싶을 때 명시적으로 한 번 치면 됨 — 그게 전부.
+변경사항 없으면 `nothing to push` 출력하고 깔끔히 종료. push 실패 시 (네트워크 다운, divergent branch 등) 다음 단계 힌트 출력 — 오프라인으로 push 만 실패해서 남은 커밋도 다음 실행 때 알아서 감지해 push. 변경을 GitHub 에 올리고 싶을 때 명시적으로 한 번 치면 됨 — 그게 전부.
+
+깜빡해도 괜찮음: config repo 에 미커밋/미push 작업이 있으면 `claude` 실행 때 한 줄 리마인더가 뜨고, 다른 기기의 변경이 auto-pull 로 들어오면 어떤 파일이 왔는지 한 줄로 알려줌.
 
 ## 디렉토리 구조
 

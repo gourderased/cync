@@ -137,8 +137,8 @@ If any network call fails (offline, slow, blocked), the wrapper prints a one-lin
 To avoid hitting the network on every `claude` invocation, the wrapper throttles itself. If a sync ran less than 60 seconds ago, the next `claude` skips the network and goes straight to the binary.
 
 ```bash
-# Skip the throttle once
-rm ~/.claude/cync-last-sync && claude
+# Skip the throttle once (sync right now, without launching claude)
+cync-sync
 
 # Always sync, no throttle
 CYNC_SYNC_INTERVAL=0 claude
@@ -154,12 +154,16 @@ Add `export CYNC_SYNC_INTERVAL=...` to your rc file (outside the `# BEGIN cync` 
 When you add a slash command, edit `CLAUDE.md`, or drop a new subagent into `~/.claude/`, those edits land in your config repo (via the symlinks). To propagate them to other machines, you have to push. cync ships two helpers to skip the manual `cd ... && git add && git commit && git push` dance:
 
 ```bash
-cync-status                        # show what's uncommitted in your config repo
+cync-status                        # uncommitted work, ahead/behind remote, recent commits
 cync-push                          # auto-message: "cync-push from <host> at <time>"
 cync-push "add /foo command"       # custom message
+cync-sync                          # pull everything right now (skips the throttle)
+cync-doctor                        # read-only health check of the whole wiring
 ```
 
-`cync-push` exits cleanly with `nothing to push` when the working tree is clean, and surfaces a clear hint if the push failed (network down, diverged branch, etc.). Run it whenever you want your changes to land on GitHub — that's the only step.
+`cync-push` exits cleanly with `nothing to push` when the working tree is clean, and surfaces a clear hint if the push failed (network down, diverged branch, etc.) — including picking up a commit that was left unpushed by an earlier offline failure. Run it whenever you want your changes to land on GitHub — that's the only step.
+
+And if you forget: the wrapper prints a one-line reminder on `claude` launch whenever the config repo has uncommitted or unpushed work, and tells you which files just arrived when an auto-pull brings in changes from another machine.
 
 ## Layout
 
