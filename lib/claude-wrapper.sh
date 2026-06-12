@@ -173,10 +173,20 @@ cync-push() {
   fi
   if git -C "$repo" push --quiet; then
     printf '\033[36m==>\033[0m cync: pushed\n'
-  else
-    printf '\033[31mxx\033[0m  cync: committed locally but push failed (offline or diverged) — your changes are safe; run `git -C %s pull --rebase` then `cync-push` again\n' "$repo" >&2
-    return 1
+    return 0
   fi
+  # Push rejected. Most common cause: another machine pushed first, so the
+  # remote moved ahead of us (diverged). Auto-rebase our commit on top and
+  # retry once — silent when the two machines touched different files. Falls
+  # through to the manual path on a real conflict (same file, same lines) or
+  # when we're simply offline (the pull below also fails).
+  printf '\033[33m!!\033[0m  cync: push rejected (remote advanced or offline) — trying pull --rebase\n' >&2
+  if git -C "$repo" pull --rebase --quiet && git -C "$repo" push --quiet; then
+    printf '\033[36m==>\033[0m cync: pushed after rebase\n'
+    return 0
+  fi
+  printf '\033[31mxx\033[0m  cync: auto-rebase failed — your commit is safe locally. If offline, retry later; if there is a merge conflict, resolve it in %s (git status), then run `git -C %s rebase --continue` and `cync-push` again\n' "$repo" "$repo" >&2
+  return 1
 }
 
 # cync-doctor — read-only health check of the whole cync wiring. One line
