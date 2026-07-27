@@ -2,12 +2,33 @@
 
 [한국어 README](./README.ko.md)
 
-One-line installer that keeps your [Claude Code](https://docs.anthropic.com/claude-code) configuration in sync across every machine you use.
+One-line installer that keeps your [Claude Code](https://docs.anthropic.com/claude-code) and [Codex CLI](https://developers.openai.com/codex) configuration in sync across every machine you use.
 
 **Tool** and **data** are deliberately kept separate:
 
 - **Tool (public, shared)** — this repo, `gourderased/cync`. Holds the installer and the `claude` shell wrapper. Everyone installs from the same place.
-- **Data (private, yours)** — your `settings.json`, `CLAUDE.md`, `commands/`, `agents/`, `skills/` live in a private repo on *your* GitHub account. cync just wires it up via symlinks and a shell wrapper.
+- **Data (private, yours)** — your `settings.json`, `instructions/`, `commands/`, `agents/`, `skills/` live in a private repo on *your* GitHub account. cync just wires it up via symlinks and a shell wrapper.
+
+## What is shared between the two tools
+
+Claude Code and Codex use different config formats. cync shares only what a single file can serve to both; the rest stays per-tool.
+
+| Item | Shared | How |
+|---|---|---|
+| `skills/` | yes | both tools read the same `SKILL.md` format -> symlink |
+| `instructions/common.md` | yes | rendered into `CLAUDE.md` and `AGENTS.md` |
+| `agents/`, `commands/`, `settings.json` | no | formats differ, managed per tool |
+
+Instructions are *generated* rather than symlinked because Codex's `AGENTS.md` has no import directive — the shared part has to be concatenated into a real file.
+
+```
+instructions/common.md + instructions/claude.md  ->  ~/.claude/CLAUDE.md
+instructions/common.md + instructions/codex.md   ->  ~/.codex/AGENTS.md
+```
+
+Don't edit the generated files; they're overwritten on the next launch. Edit `instructions/` instead.
+
+`~/.codex/skills` holds Codex's own `.system/` skills, so cync links each shared skill individually rather than replacing the directory.
 
 ## How it works
 
@@ -18,12 +39,12 @@ One-line installer that keeps your [Claude Code](https://docs.anthropic.com/clau
                     │  gourderased/cync         (PUBLIC)       │  ← installer
                     │  ├ install / uninstall                   │
                     │  ├ lib/{setup, install, uninstall,       │
-                    │  │      claude-wrapper}.sh               │
+                    │  │      claude-wrapper, sync-targets}.sh │
                     │  └ template/                             │
                     │                                          │
                     │  <user>/<config-repo>     (PRIVATE)      │  ← your settings
                     │  ├ settings.json                         │
-                    │  ├ CLAUDE.md                             │
+                    │  ├ instructions/{common,claude,codex}.md │
                     │  └ commands/  agents/  skills/           │
                     └────────────────────┬─────────────────────┘
                                          │
@@ -74,7 +95,8 @@ The installer:
 2. Checks every prerequisite at once and prints copy-paste install commands per distro for anything missing (`git`, `node`, `claude`, `gh`).
 3. Runs `gh auth login` if you aren't authenticated yet — device-code flow that works on headless servers too.
 4. Walks you through the interactive steps below.
-5. Symlinks `~/.claude/{settings.json, CLAUDE.md, commands, agents, skills}` into your config repo.
+5. Symlinks `~/.claude/{settings.json, commands, agents, skills}` into your config repo.
+6. Renders `~/.claude/CLAUDE.md` from `instructions/`. If Codex is installed, also renders `~/.codex/AGENTS.md` and links the shared skills.
 6. Appends a managed block to `~/.zshrc` or `~/.bashrc` that sources the `claude` wrapper.
 
 Reload your shell, then run `claude`.
@@ -95,7 +117,7 @@ Mandatory input with format validation. If a repo with that name already exists 
 
 cync notices you already have local Claude Code settings and asks how to populate the new repo:
 
-- **`u` Use my existing settings (default)** — pushes your current `settings.json`, `CLAUDE.md`, etc. into the new repo. Missing entries fall back to the bundled template.
+- **`u` Use my existing settings (default)** — pushes your current `settings.json`, `commands/`, etc. into the new repo. Missing entries fall back to the bundled template. (`CLAUDE.md` is excluded — it's generated, so the template's `instructions/` goes in instead.)
 - **`t` Use the cync template only** — empty starter (model=opus, no permissions, no plugins). Your existing files move to `~/.claude/backups/`.
 
 ### 4 — Public-repo confirmation *(only when you select a public repo)*
@@ -114,7 +136,7 @@ If real files or foreign symlinks in `~/.claude/` overlap with the config repo, 
 
 ### 7 — Git identity *(only when `~/.gitconfig` is missing user.name or user.email)*
 
-cync offers to fill these from your GitHub profile. Without them, your first manual commit (adding a slash command, editing CLAUDE.md) would fail with "Author identity unknown".
+cync offers to fill these from your GitHub profile. Without them, your first manual commit (adding a slash command, editing `instructions/`) would fail with "Author identity unknown".
 
 ## Adding another machine
 
@@ -151,7 +173,7 @@ Add `export CYNC_SYNC_INTERVAL=...` to your rc file (outside the `# BEGIN cync` 
 
 ### Pushing changes back
 
-When you add a slash command, edit `CLAUDE.md`, or drop a new subagent into `~/.claude/`, those edits land in your config repo (via the symlinks). To propagate them to other machines, you have to push. cync ships two helpers to skip the manual `cd ... && git add && git commit && git push` dance:
+When you add a slash command, edit `instructions/`, or drop a new subagent into your config repo, those edits land in the repo. To propagate them to other machines, you have to push. cync ships two helpers to skip the manual `cd ... && git add && git commit && git push` dance:
 
 ```bash
 cync-status                        # uncommitted work, ahead/behind remote, recent commits
@@ -175,25 +197,35 @@ And if you forget: the wrapper prints a one-line reminder on `claude` launch whe
 │   ├── setup.sh                           # interactive init/join flow
 │   ├── install.sh                         # symlinks + rc block
 │   ├── uninstall.sh                       # interactive teardown
-│   └── claude-wrapper.sh                  # claude shell function
+│   ├── claude-wrapper.sh                  # claude / codex shell functions
+│   └── sync-targets.sh                    # instruction rendering + Codex skill links
 ├── template/                              # seed for new config repos
 └── tmp/                                   # ephemeral build dirs
 
 ~/<your-config-repo>/                      # your private repo, cloned (data)
-├── settings.json
-├── CLAUDE.md
-├── commands/
-├── agents/
-└── skills/
+├── settings.json                          # Claude only
+├── instructions/
+│   ├── common.md                          # both tools
+│   ├── claude.md                          # Claude only
+│   └── codex.md                           # Codex only
+├── commands/                              # Claude only
+├── agents/                                # Claude only
+└── skills/                                # shared
 
 ~/.claude/                                 # what Claude Code reads
 ├── settings.json   -> ../<your-config-repo>/settings.json
-├── CLAUDE.md       -> ../<your-config-repo>/CLAUDE.md
+├── CLAUDE.md                              # generated (common + claude)
 ├── commands        -> ../<your-config-repo>/commands
 ├── agents          -> ../<your-config-repo>/agents
 ├── skills          -> ../<your-config-repo>/skills
-├── cync-last-sync                         # throttle marker
+├── cync-last-sync                         # throttle marker (shared with codex)
 └── plugin-sync-state/                     # per-plugin HEAD tracking
+
+~/.codex/                                  # what Codex reads
+├── AGENTS.md                              # generated (common + codex)
+└── skills/
+    ├── .system/                           # Codex's own skills (untouched)
+    └── <skill>     -> ../<your-config-repo>/skills/<skill>
 ```
 
 ## Uninstalling

@@ -30,7 +30,10 @@ mkdir -p "$CLAUDE_HOME"
 # ---------------------------------------------------------------------------
 # 1. Symlinks
 # ---------------------------------------------------------------------------
-ENTRIES=(settings.json CLAUDE.md commands agents skills)
+# CLAUDE.md is deliberately absent: it's no longer a symlink to a repo file but
+# a file generated from instructions/ (see step 3), because Codex's AGENTS.md
+# has to be generated the same way and both must come from one source.
+ENTRIES=(settings.json commands agents skills)
 
 # 1a. Pre-scan: figure out which entries would actually change so we can warn
 #     the user before we touch anything destructive. Two flavors of "existing":
@@ -126,7 +129,20 @@ for entry in "${ENTRIES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# 2. Rc file marker block
+# 2. Generated config (instructions + Codex skill links)
+# ---------------------------------------------------------------------------
+# Same code the wrapper runs on every launch, so a fresh install lands in the
+# exact state a synced machine converges to.
+if [ -r "$CYNC_DIR/lib/sync-targets.sh" ]; then
+  # shellcheck source=lib/sync-targets.sh
+  . "$CYNC_DIR/lib/sync-targets.sh"
+  _cync_apply_config
+else
+  warn "lib/sync-targets.sh missing — skipped instruction rendering"
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Rc file marker block
 # ---------------------------------------------------------------------------
 shell_name="$(basename "${SHELL:-/bin/bash}")"
 case "$shell_name" in

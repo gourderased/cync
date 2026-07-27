@@ -1,8 +1,14 @@
-# lib/claude-wrapper.sh — overrides the `claude` command with a shell function
-# that keeps the cync installer, the user's config repo, and plugin caches in
-# sync before invoking the real binary.
+# lib/claude-wrapper.sh — overrides the `claude` and `codex` commands with
+# shell functions that keep the cync installer, the user's config repo, and
+# the per-tool config in sync before invoking the real binary.
 #
 # Sourced from the user's rc file via the cync marker block.
+
+# Rendering instructions and linking Codex skills lives in its own file so
+# lib/install.sh can reuse it at setup time.
+if [ -n "${CYNC_DIR:-}" ] && [ -r "$CYNC_DIR/lib/sync-targets.sh" ]; then
+  . "$CYNC_DIR/lib/sync-targets.sh"
+fi
 
 _cync_pull() {
   # $1 = friendly label for warnings, $2 = repo dir
@@ -88,7 +94,7 @@ _cync_push_reminder() {
   return 0
 }
 
-# _cync_do_sync — one full sync round, shared by claude() and cync-sync.
+# _cync_do_sync — one full sync round, shared by claude(), codex() and cync-sync.
 _cync_do_sync() {
   # Mark first so a second `claude` started moments later skips straight
   # to the binary instead of racing this shell's git pulls.
@@ -100,10 +106,16 @@ _cync_do_sync() {
   # 2) update the config repo
   [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
 
-  # 3) plugin upstream-update check — notify only (needs jq)
+  # 3) render per-tool instructions + link shared skills, now that the repo
+  #    is current. Guarded because an older ~/.cync won't have the file yet.
+  if command -v _cync_apply_config >/dev/null 2>&1; then
+    _cync_apply_config || true
+  fi
+
+  # 4) plugin upstream-update check — notify only (needs jq)
   _claude_refresh_plugins || true
 
-  # 4) nudge if local config changes haven't been pushed yet
+  # 5) nudge if local config changes haven't been pushed yet
   _cync_push_reminder
   return 0
 }
@@ -115,6 +127,18 @@ claude() {
 
   # invoke the real claude
   command claude "$@"
+}
+
+# codex() — the same sync round as claude(). The throttle marker is shared on
+# purpose: launching codex right after claude shouldn't re-pull config that was
+# just fetched. The plugin check inside runs either way; its notice names
+# claude explicitly, and it only fires when an upstream plugin actually moved.
+codex() {
+  if _cync_should_sync; then
+    _cync_do_sync
+  fi
+
+  command codex "$@"
 }
 
 # cync-sync — force a sync round right now, ignoring the throttle. Handy

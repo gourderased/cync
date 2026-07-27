@@ -216,7 +216,10 @@ if [ "$choice" -eq "$CREATE_IDX" ]; then
   CLAUDE_HOME="$HOME/.claude"
   SEED_MODE="template"
   SEED_ENTRIES=()
-  for entry in settings.json CLAUDE.md commands agents skills; do
+  # CLAUDE.md is excluded on purpose: it's generated from instructions/, so
+  # seeding a new repo with it would commit a build artifact. New repos get
+  # the template's instructions/ instead.
+  for entry in settings.json commands agents skills; do
     src="$CLAUDE_HOME/$entry"
     # Count real files / real dirs as user content; foreign symlinks are
     # excluded (they belong to a different system, not the user's claude
@@ -564,5 +567,9 @@ cat <<EOF
 
   Config repo:  $REPO
   Clone path:   $TARGET_DIR
+
+  Shared with Codex (when installed):
+    ~/.codex/AGENTS.md    generated from instructions/{common,codex}.md
+    ~/.codex/skills/*     symlinks to the repo's skills/
 
 EOF

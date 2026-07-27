@@ -2,12 +2,33 @@
 
 [English README](./README.md)
 
-[Claude Code](https://docs.anthropic.com/claude-code) 설정을 여러 기기에서 한 줄로 동기화하는 설치 도구.
+[Claude Code](https://docs.anthropic.com/claude-code) 와 [Codex CLI](https://developers.openai.com/codex) 설정을 여러 기기에서 한 줄로 동기화하는 설치 도구.
 
 **도구** 와 **데이터** 를 의도적으로 분리합니다:
 
-- **도구 (public, 공용)** — 이 repo, `gourderased/cync`. 설치 스크립트와 `claude` 쉘 래퍼가 들어있음. 모든 사용자가 같은 곳에서 설치.
-- **데이터 (private, 본인 것)** — 본인의 `settings.json`, `CLAUDE.md`, `commands/`, `agents/`, `skills/` 는 본인 GitHub 계정의 private repo 에 들어감. cync 는 심링크와 쉘 래퍼로 연결만 해줌.
+- **도구 (public, 공용)** — 이 repo, `gourderased/cync`. 설치 스크립트와 `claude`/`codex` 쉘 래퍼가 들어있음. 모든 사용자가 같은 곳에서 설치.
+- **데이터 (private, 본인 것)** — 본인의 `settings.json`, `instructions/`, `commands/`, `agents/`, `skills/` 는 본인 GitHub 계정의 private repo 에 들어감. cync 는 심링크와 쉘 래퍼로 연결만 해줌.
+
+## 두 툴 사이에서 공유되는 것
+
+Claude Code 와 Codex 는 설정 포맷이 서로 다릅니다. 파일 하나로 양쪽을 먹일 수 있는 것만 공유하고, 나머지는 각 툴에서 각자 관리합니다.
+
+| 항목 | 공유 | 방식 |
+|---|---|---|
+| `skills/` | O | 두 툴 다 `SKILL.md` 포맷이 같음 → 심링크 |
+| `instructions/common.md` | O | `CLAUDE.md` 와 `AGENTS.md` 로 각각 생성 |
+| `agents/`, `commands/`, `settings.json` | X | 포맷이 달라 각 툴에서 관리 |
+
+지시서를 심링크가 아니라 **생성**하는 이유: Codex 의 `AGENTS.md` 에는 다른 파일을 불러오는 import 문법이 없어서, 공통 부분이 이어붙은 실제 파일이어야 합니다.
+
+```
+instructions/common.md + instructions/claude.md  →  ~/.claude/CLAUDE.md
+instructions/common.md + instructions/codex.md   →  ~/.codex/AGENTS.md
+```
+
+생성된 파일은 직접 고치지 마세요. 다음 실행 때 덮어써집니다. `instructions/` 를 고치면 됩니다.
+
+`~/.codex/skills` 는 Codex 자체 스킬(`.system/`)이 들어있는 디렉토리라 통째로 심링크하지 않고, 스킬 하나씩 개별 심링크합니다.
 
 ## 동작 원리
 
@@ -18,12 +39,12 @@
                     │  gourderased/cync         (PUBLIC)       │  ← 설치 도구
                     │  ├ install / uninstall                   │
                     │  ├ lib/{setup, install, uninstall,       │
-                    │  │      claude-wrapper}.sh               │
+                    │  │      claude-wrapper, sync-targets}.sh │
                     │  └ template/                             │
                     │                                          │
                     │  <user>/<config-repo>     (PRIVATE)      │  ← 본인 설정
                     │  ├ settings.json                         │
-                    │  ├ CLAUDE.md                             │
+                    │  ├ instructions/{common,claude,codex}.md │
                     │  └ commands/  agents/  skills/           │
                     └────────────────────┬─────────────────────┘
                                          │
@@ -36,22 +57,29 @@
        ~/.cync/                       설치 도구 clone (래퍼가 자동 pull)
        ~/<config-repo>/               개인 설정 clone (래퍼가 자동 pull)
        ~/.claude/{settings.json,...}    → ~/<config-repo>/ 로 심링크
+       ~/.claude/CLAUDE.md            instructions/ 에서 생성
+       ~/.codex/AGENTS.md             instructions/ 에서 생성
+       ~/.codex/skills/*              → ~/<config-repo>/skills/ 로 개별 심링크
        ~/.zshrc | ~/.bashrc           BEGIN cync 블록이 래퍼를 source
 ```
 
-`claude` 를 실행할 때마다 쉘 래퍼가 먼저 동작:
+`claude` 또는 `codex` 를 실행할 때마다 쉘 래퍼가 먼저 동작:
 
 ```
-$ claude
+$ claude   (codex 도 동일)
    │
    ▼   throttle: 마지막 sync 가 60초 이내면 skip
    │
    ▼   git pull ~/.cync                 (설치 도구 최신화)
    │   git pull ~/<config-repo>         (다른 기기의 설정 변경 가져옴)
-   │   플러그인 HEAD 체크 (변경 시 안내만)
+   │   instructions/ → CLAUDE.md, AGENTS.md 생성
+   │   skills/ → ~/.codex/skills 개별 심링크
+   │   플러그인 HEAD 체크 (변경 시 안내만, claude 만)
    │
-   ▼   command claude "$@"              (실제 Claude Code CLI 실행)
+   ▼   command claude "$@"              (실제 CLI 실행)
 ```
+
+throttle 마커는 두 래퍼가 공유합니다. `claude` 직후에 `codex` 를 켜면 방금 pull 한 설정이 이미 최신이므로 다시 pull 하지 않습니다.
 
 한 기기에서 `settings.json` 을 수정하거나 슬래시 커맨드를 추가하고 push 하면, 다른 기기에서 다음 `claude` 실행 시 자동 반영. 수동 sync 없음, 기기별 drift 없음.
 
@@ -74,8 +102,9 @@ bash ~/.cync/lib/setup.sh
 2. 모든 prereq (`git`, `node`, `claude`, `gh`) 한 번에 체크하고 빠진 게 있으면 배포판별 설치 명령을 출력.
 3. gh 인증 안 돼있으면 `gh auth login` 실행 — device-code 흐름이라 SSH/headless 서버에서도 동작.
 4. 아래 인터랙티브 단계들 진행.
-5. `~/.claude/{settings.json, CLAUDE.md, commands, agents, skills}` 를 config repo 로 심링크.
-6. `~/.zshrc` 또는 `~/.bashrc` 에 cync 블록 추가 (claude 래퍼 source).
+5. `~/.claude/{settings.json, commands, agents, skills}` 를 config repo 로 심링크.
+6. `instructions/` 에서 `~/.claude/CLAUDE.md` 생성. Codex 가 깔려 있으면 `~/.codex/AGENTS.md` 도 생성하고 스킬을 개별 심링크.
+7. `~/.zshrc` 또는 `~/.bashrc` 에 cync 블록 추가 (claude/codex 래퍼 source).
 
 설치 끝나면 쉘 리로드 후 `claude` 실행.
 
@@ -95,7 +124,7 @@ bash ~/.cync/lib/setup.sh
 
 본인이 이미 Claude Code 를 쓰고 있던 흔적이 있으면 새 repo 를 어떻게 채울지 묻기:
 
-- **`u` 본인 설정 사용 (default, 추천)** — 현재 `settings.json`, `CLAUDE.md` 등을 그대로 새 repo 에 push. 빠진 항목은 템플릿에서 채움.
+- **`u` 본인 설정 사용 (default, 추천)** — 현재 `settings.json`, `commands/` 등을 그대로 새 repo 에 push. 빠진 항목은 템플릿에서 채움. (`CLAUDE.md` 는 생성물이라 제외 — 템플릿의 `instructions/` 가 들어감)
 - **`t` cync 템플릿만 사용** — 빈 starter (model=opus, 빈 permissions, 빈 plugins). 본인 기존 파일은 `~/.claude/backups/` 로 이동.
 
 ### 4 — public repo 확인 *(public repo 를 선택했을 때만)*
@@ -114,7 +143,7 @@ config repo 로 public repo 를 고르면 빨간 경고 + `y` 명시적 입력 �
 
 ### 7 — git 사용자 정보 설정 *(global git config 에 user.name 또는 user.email 이 비어있을 때만)*
 
-cync 가 GitHub 프로필에서 가져온 값으로 자동 설정 제안. 이게 없으면 첫 수동 commit (슬래시 커맨드 추가, CLAUDE.md 편집 등) 이 "Author identity unknown" 으로 실패함.
+cync 가 GitHub 프로필에서 가져온 값으로 자동 설정 제안. 이게 없으면 첫 수동 commit (슬래시 커맨드 추가, `instructions/` 편집 등) 이 "Author identity unknown" 으로 실패함.
 
 ## 다른 기기 추가
 
@@ -151,7 +180,7 @@ rc 파일 (cync 블록 밖에) `export CYNC_SYNC_INTERVAL=...` 추가하면 영�
 
 ### 변경사항 push 하기
 
-슬래시 커맨드 추가, `CLAUDE.md` 수정, 서브에이전트 추가 등의 작업을 하면 (심링크 통해) config repo 의 파일이 변경됩니다. 다른 기기로 전파하려면 push 해야 함. `cd ... && git add && git commit && git push` 매번 치기 귀찮으니 두 명령을 wrapper 에 추가:
+슬래시 커맨드 추가, `instructions/` 수정, 서브에이전트 추가 등의 작업을 하면 config repo 의 파일이 변경됩니다. 다른 기기로 전파하려면 push 해야 함. `cd ... && git add && git commit && git push` 매번 치기 귀찮으니 두 명령을 wrapper 에 추가:
 
 ```bash
 cync-status                        # 미커밋 변경 + remote 대비 ahead/behind + 최근 커밋
@@ -175,25 +204,35 @@ cync-doctor                        # 전체 연결 상태 read-only 점검
 │   ├── setup.sh                           # 인터랙티브 init/join 흐름
 │   ├── install.sh                         # 심링크 + rc 블록
 │   ├── uninstall.sh                       # 인터랙티브 제거
-│   └── claude-wrapper.sh                  # claude 쉘 함수
+│   ├── claude-wrapper.sh                  # claude / codex 쉘 함수
+│   └── sync-targets.sh                    # 지시서 생성 + Codex 스킬 링크
 ├── template/                              # 새 config repo seed
 └── tmp/                                   # 임시 빌드 디렉토리
 
 ~/<your-config-repo>/                      # 본인 private repo (데이터)
-├── settings.json
-├── CLAUDE.md
-├── commands/
-├── agents/
-└── skills/
+├── settings.json                          # Claude 전용
+├── instructions/
+│   ├── common.md                          # 두 툴 공통
+│   ├── claude.md                          # Claude 전용
+│   └── codex.md                           # Codex 전용
+├── commands/                              # Claude 전용
+├── agents/                                # Claude 전용
+└── skills/                                # 두 툴 공유
 
 ~/.claude/                                 # Claude Code 가 읽는 곳
 ├── settings.json   -> ../<your-config-repo>/settings.json
-├── CLAUDE.md       -> ../<your-config-repo>/CLAUDE.md
+├── CLAUDE.md                              # 생성됨 (common + claude)
 ├── commands        -> ../<your-config-repo>/commands
 ├── agents          -> ../<your-config-repo>/agents
 ├── skills          -> ../<your-config-repo>/skills
-├── cync-last-sync                         # throttle 마커
+├── cync-last-sync                         # throttle 마커 (codex 와 공유)
 └── plugin-sync-state/                     # 플러그인별 HEAD 추적
+
+~/.codex/                                  # Codex 가 읽는 곳
+├── AGENTS.md                              # 생성됨 (common + codex)
+└── skills/
+    ├── .system/                           # Codex 자체 스킬 (안 건드림)
+    └── <skill>     -> ../<your-config-repo>/skills/<skill>
 ```
 
 ## 제거

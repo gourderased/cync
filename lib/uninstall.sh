@@ -34,6 +34,10 @@ section() {
 # Phase 0 — state detection
 # ---------------------------------------------------------------------------
 CLAUDE_HOME="$HOME/.claude"
+CODEX_HOME="$HOME/.codex"
+# CLAUDE.md is listed even though cync now generates it rather than symlinking
+# it: machines installed before that change still have the old symlink, and
+# this loop only acts on entries that actually are symlinks.
 ENTRIES=(settings.json CLAUDE.md commands agents skills)
 
 # Find rc files that contain a cync marker block
@@ -84,9 +88,26 @@ for e in "${ENTRIES[@]}"; do
   [ -L "$CLAUDE_HOME/$e" ] && SYMLINKED_ENTRIES+=("$e")
 done
 
+# What cync left in Codex's home: the generated AGENTS.md plus one symlink per
+# shared skill. Only links that point into the config repo count as ours —
+# Codex's own .system skills and anything hand-placed stay untouched.
+CODEX_ARTIFACTS=()
+[ -f "$CODEX_HOME/AGENTS.md" ] && [ ! -L "$CODEX_HOME/AGENTS.md" ] \
+  && grep -q '자동 생성됨' "$CODEX_HOME/AGENTS.md" 2>/dev/null \
+  && CODEX_ARTIFACTS+=("$CODEX_HOME/AGENTS.md")
+if [ -n "$CONFIG_REPO" ] && [ -d "$CODEX_HOME/skills" ]; then
+  for link in "$CODEX_HOME/skills"/*; do
+    [ -L "$link" ] || continue
+    case "$(readlink "$link" 2>/dev/null || true)" in
+      "$CONFIG_REPO/skills/"*) CODEX_ARTIFACTS+=("$link") ;;
+    esac
+  done
+fi
+
 # Bail early when there's literally nothing to clean up
 if [ ${#RC_FILES[@]} -eq 0 ] \
    && [ ${#SYMLINKED_ENTRIES[@]} -eq 0 ] \
+   && [ ${#CODEX_ARTIFACTS[@]} -eq 0 ] \
    && [ ! -d "$CYNC_DIR" ]; then
   info "Nothing to uninstall — cync isn't detected on this machine."
   exit 0
@@ -131,6 +152,9 @@ if [ -n "$CONFIG_REPO" ]; then
 fi
 if [ ${#SYMLINKED_ENTRIES[@]} -gt 0 ]; then
   echo "    Symlinks:     ${SYMLINKED_ENTRIES[*]}"
+fi
+if [ ${#CODEX_ARTIFACTS[@]} -gt 0 ]; then
+  echo "    Codex:        ${#CODEX_ARTIFACTS[@]} item(s) under $CODEX_HOME"
 fi
 if [ ${#RC_FILES[@]} -gt 0 ]; then
   for rc in "${RC_FILES[@]}"; do
@@ -212,6 +236,24 @@ if [ ${#SYMLINKED_ENTRIES[@]} -gt 0 ]; then
     else
       rm -f "$src"
       info "removed symlink ~/.claude/$e"
+    fi
+  done
+fi
+
+# (1b) Codex artifacts. AGENTS.md is generated, so "materialize" means leaving
+# the file in place — it already is a real file with the current instructions.
+# The skill symlinks always go, or Codex would keep loading skills out of a
+# repo cync no longer syncs.
+if [ ${#CODEX_ARTIFACTS[@]} -gt 0 ]; then
+  for a in "${CODEX_ARTIFACTS[@]}"; do
+    if [ -L "$a" ]; then
+      rm -f "$a"
+      info "removed symlink ${a/#$HOME/\~}"
+    elif [ "$SYMLINK_MODE" = "purge" ]; then
+      rm -f "$a"
+      info "removed ${a/#$HOME/\~}"
+    else
+      info "kept ${a/#$HOME/\~} (already a real file)"
     fi
   done
 fi
