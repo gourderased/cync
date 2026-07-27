@@ -83,6 +83,21 @@ throttle 마커는 두 래퍼가 공유합니다. `claude` 직후에 `codex` 를
 
 한 기기에서 `settings.json` 을 수정하거나 슬래시 커맨드를 추가하고 push 하면, 다른 기기에서 다음 `claude` 실행 시 자동 반영. 수동 sync 없음, 기기별 drift 없음.
 
+## 작업 인계 (handoff)
+
+기기와 툴을 옮겨가며 작업을 이어가기 위한 노트를 `~/agent-state` 에 둡니다.
+Claude Code 와 Codex 의 세션 파일은 스키마가 달라 서로 옮길 수 없고, Claude 쪽만
+100MB 에 가까워 git 에 넣기도 어렵습니다. 대신 프로젝트마다 짧은 마크다운 노트를 남깁니다.
+
+- 저장소가 없는 기기에서는 **첫 실행 때 자동으로 clone** 합니다.
+  주소는 config repo 의 origin 에서 유도합니다 (같은 계정, 디렉토리 이름과 같은 repo 이름).
+- 접근할 수 없으면 한 번만 시도하고 마커를 남겨 매번 네트워크를 치지 않습니다.
+  `cync-sync` 로 재시도합니다.
+- 현재 디렉토리에 노트가 있으면 실행 시 한 줄로 알려줍니다.
+- 쓰지 않으려면 rc 파일에 (cync 블록 밖에) `export CYNC_STATE_REPO=""`.
+
+노트를 읽고 쓰는 것은 config repo 의 `handoff` 스킬이 합니다.
+
 ## 설치
 
 ```bash

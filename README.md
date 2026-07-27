@@ -76,6 +76,24 @@ $ claude
 
 So when you tweak `settings.json` or add a slash command on one machine and push, the next `claude` on any other machine picks it up automatically — no manual sync, no per-machine drift.
 
+## Handoffs
+
+Notes that carry work between machines and between the two CLIs live in
+`~/agent-state`. Session files can't do this job: the two tools use different
+jsonl schemas, and Claude's sessions alone approach 100MB. A short markdown
+note per project carries the part that matters.
+
+- A machine without the store **clones it on first launch**. The remote is
+  derived from the config repo's origin: same account, repo named after the
+  destination directory.
+- If it isn't reachable, cync tries once and leaves a marker so it isn't
+  hitting the network on every launch. `cync-sync` retries.
+- When the current directory has a note, launching prints one line about it.
+- To opt out, put `export CYNC_STATE_REPO=""` in your rc file, outside the
+  cync block.
+
+Reading and writing the notes is the config repo's `handoff` skill.
+
 ## Install
 
 ```bash

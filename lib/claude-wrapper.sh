@@ -130,6 +130,45 @@ _cync_do_sync() {
   return 0
 }
 
+# _cync_state_clone — set the handoff store up on a machine that doesn't have
+# it yet, so a new server picks up handoffs without a manual clone step. The
+# step is easy to forget and failing to do it is invisible: work just silently
+# doesn't carry over.
+#
+# The remote is derived from the config repo's origin — same host and owner,
+# repo named after the destination directory. A machine that has one already
+# has credentials for the other.
+#
+# The failure marker keeps a machine with no state repo (or no access) from
+# making a network call on every launch. `cync-sync` clears it to retry.
+_cync_state_clone() {
+  local dest="$1"
+  local marker="$HOME/.claude/cync-state-unavailable"
+  [ -e "$dest" ] && return 1        # exists but isn't a git repo — leave it alone
+  [ -f "$marker" ] && return 1
+
+  local origin url
+  origin="$(git -C "${CYNC_CONFIG_REPO:-.}" remote get-url origin 2>/dev/null)" || return 1
+  [ -n "$origin" ] || return 1
+  url="${origin%/*}/$(basename "$dest").git"
+
+  if ! git ls-remote "$url" HEAD >/dev/null 2>&1; then
+    : > "$marker" 2>/dev/null
+    return 1
+  fi
+
+  printf '\033[36m==>\033[0m cync: setting up handoff store from %s\n' "$url" >&2
+  if git clone --quiet "$url" "$dest" 2>/dev/null; then
+    printf '\033[36m==>\033[0m cync: handoff store ready at %s\n' "$dest" >&2
+    return 0
+  fi
+
+  : > "$marker" 2>/dev/null
+  printf '\033[33m!!\033[0m  cync: could not clone %s — handoffs from other machines will not appear here (`cync-sync` retries)\n' \
+    "$url" >&2
+  return 1
+}
+
 # _cync_state_sync — pull the handoff store and point out a note for the
 # directory the tool is being launched from.
 #
@@ -141,7 +180,11 @@ _cync_do_sync() {
 # Opt out with CYNC_STATE_REPO="" in your rc file, outside the cync block.
 _cync_state_sync() {
   local repo="${CYNC_STATE_REPO-$HOME/agent-state}"
-  [ -n "$repo" ] && [ -d "$repo/.git" ] || return 0
+  [ -n "$repo" ] || return 0
+
+  if [ ! -d "$repo/.git" ]; then
+    _cync_state_clone "$repo" || return 0
+  fi
 
   _cync_pull "handoff store" "$repo"
 
@@ -204,6 +247,10 @@ cync-sync() {
     printf '\033[31mxx\033[0m  cync: helper functions not loaded in this shell — run `cync-sync` from an interactive shell\n' >&2
     return 1
   fi
+  # An explicit sync is the retry path for a handoff store that couldn't be
+  # cloned earlier — the launch path stops trying so it isn't hitting the
+  # network every time.
+  rm -f "$HOME/.claude/cync-state-unavailable" 2>/dev/null
   _cync_do_sync
   printf '\033[36m==>\033[0m cync: sync complete\n'
 }
@@ -362,8 +409,10 @@ cync-doctor() {
     printf '\033[32mok\033[0m  handoff store disabled (CYNC_STATE_REPO is empty)\n'
   elif [ -d "$state/.git" ]; then
     printf '\033[32mok\033[0m  handoff store → %s\n' "$state"
+  elif [ -f "$HOME/.claude/cync-state-unavailable" ]; then
+    printf '\033[33m!!\033[0m  handoff store at %s could not be set up — `cync-sync` retries; work from other machines will not appear until it succeeds\n' "$state"
   else
-    printf '\033[33m!!\033[0m  no handoff store at %s — `gh repo clone gourderased/agent-state %s` to pick up work from other machines\n' "$state" "$state"
+    printf '\033[33m!!\033[0m  no handoff store at %s yet — the next launch will try to clone it\n' "$state"
   fi
 
   # 4) repo branch health + local state
