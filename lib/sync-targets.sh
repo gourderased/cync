@@ -13,7 +13,7 @@
 # Sourced by lib/install.sh (setup) and lib/claude-wrapper.sh (every launch,
 # right after the config repo pull). Safe to run repeatedly.
 #
-# Reads: _claude_config_repo
+# Reads: CYNC_CONFIG_REPO
 
 _cync_st_info() { printf '\033[36m==>\033[0m cync: %s\n' "$*"; }
 _cync_st_warn() { printf '\033[33m!!\033[0m  cync: %s\n' "$*" >&2; }
@@ -33,7 +33,7 @@ _cync_has_codex() {
 # unchanged (keeps mtime stable, keeps the launch quiet).
 _cync_render() {
   local dst="$1"; shift
-  local repo="${_claude_config_repo:-}"
+  local repo="${CYNC_CONFIG_REPO:-}"
   local tmp src
 
   [ -n "$repo" ] || return 0
@@ -74,7 +74,7 @@ _cync_render() {
 # skills under ~/.codex/skills/.system, and replacing the directory with a
 # symlink would hide them.
 _cync_link_codex_skills() {
-  local repo="${_claude_config_repo:-}"
+  local repo="${CYNC_CONFIG_REPO:-}"
   local src_dir="$repo/skills"
   local dst_dir="$HOME/.codex/skills"
   local entry name dst target

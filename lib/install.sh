@@ -3,12 +3,15 @@
 # register a marker block in the user's shell rc file. Idempotent.
 #
 # Inputs (exported by setup.sh):
-#   CYNC_DIR              path to ~/.cync
-#   _claude_config_repo   path to the user's config repo clone
+#   CYNC_DIR           path to ~/.cync
+#   CYNC_CONFIG_REPO   path to the user's config repo clone
 set -euo pipefail
 
 : "${CYNC_DIR:?CYNC_DIR not set}"
-: "${_claude_config_repo:?_claude_config_repo not set}"
+# Accept the pre-rename name too, so re-running the installer by hand on an
+# older machine (where the rc block still exports it) doesn't just abort.
+: "${CYNC_CONFIG_REPO:=${_claude_config_repo-}}"
+: "${CYNC_CONFIG_REPO:?CYNC_CONFIG_REPO not set}"
 
 info() { printf '\033[36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!!\033[0m  %s\n' "$*" >&2; }
@@ -43,7 +46,7 @@ ENTRIES=(settings.json commands agents skills)
 real_entries=()
 extlink_entries=()    # parallel array, each item formatted "<name>|<old-target>"
 for entry in "${ENTRIES[@]}"; do
-  src="$_claude_config_repo/$entry"
+  src="$CYNC_CONFIG_REPO/$entry"
   dst="$CLAUDE_HOME/$entry"
 
   [ -e "$src" ] || continue
@@ -84,7 +87,7 @@ if [ ${#real_entries[@]} -gt 0 ] || [ ${#extlink_entries[@]} -gt 0 ]; then
 
   echo
   echo "  These will be replaced with symlinks into your config repo:"
-  echo "    $_claude_config_repo"
+  echo "    $CYNC_CONFIG_REPO"
   echo
   if [ ${#real_entries[@]} -gt 0 ]; then
     echo "  Backup: ~/.claude/backups/pre-symlink-<timestamp>/"
@@ -103,7 +106,7 @@ fi
 # 1b. Apply: same logic as the pre-scan, but actually perform the moves and links.
 backup_dir=""
 for entry in "${ENTRIES[@]}"; do
-  src="$_claude_config_repo/$entry"
+  src="$CYNC_CONFIG_REPO/$entry"
   dst="$CLAUDE_HOME/$entry"
 
   [ -e "$src" ] || continue
@@ -186,7 +189,7 @@ mv "$tmp_rc_clean" "$tmp_rc"
   cat <<EOF
 # BEGIN cync (managed by lib/install.sh — do not edit between markers)
 export CYNC_DIR="$CYNC_DIR"
-export _claude_config_repo="$_claude_config_repo"
+export CYNC_CONFIG_REPO="$CYNC_CONFIG_REPO"
 source "\$CYNC_DIR/lib/claude-wrapper.sh"
 # END cync
 EOF

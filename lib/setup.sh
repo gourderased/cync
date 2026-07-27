@@ -491,7 +491,7 @@ fi
 # 5. Run install.sh (symlinks + rc file marker)
 # ---------------------------------------------------------------------------
 export CYNC_DIR
-export _claude_config_repo="$TARGET_DIR"
+export CYNC_CONFIG_REPO="$TARGET_DIR"
 
 info "Running lib/install.sh"
 bash "$CYNC_DIR/lib/install.sh"

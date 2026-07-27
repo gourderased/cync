@@ -4,6 +4,13 @@
 #
 # Sourced from the user's rc file via the cync marker block.
 
+# The rc block exports CYNC_CONFIG_REPO. Machines set up before cync handled
+# Codex export _claude_config_repo instead, and their rc block is only
+# rewritten when the installer runs again — which may be never. Accept either,
+# preferring the new name, so a machine keeps working until it's reinstalled.
+: "${CYNC_CONFIG_REPO:=${_claude_config_repo-}}"
+export CYNC_CONFIG_REPO
+
 # Rendering instructions and linking Codex skills lives in its own file so
 # lib/install.sh can reuse it at setup time.
 if [ -n "${CYNC_DIR:-}" ] && [ -r "$CYNC_DIR/lib/sync-targets.sh" ]; then
@@ -80,7 +87,7 @@ _cync_mark_sync() {
 # Local-only checks, no network. Runs on the throttled sync path so it
 # doesn't nag on every single launch.
 _cync_push_reminder() {
-  local repo="${_claude_config_repo:-}"
+  local repo="${CYNC_CONFIG_REPO:-}"
   { [ -n "$repo" ] && [ -d "$repo/.git" ]; } || return 0
   local dirty ahead
   dirty="$(git -C "$repo" status --porcelain 2>/dev/null | grep -c .)"
@@ -104,7 +111,7 @@ _cync_do_sync() {
   [ -n "${CYNC_DIR:-}" ] && _cync_pull "installer" "$CYNC_DIR"
 
   # 2) update the config repo
-  [ -n "${_claude_config_repo:-}" ] && _cync_pull "config repo" "$_claude_config_repo"
+  [ -n "${CYNC_CONFIG_REPO:-}" ] && _cync_pull "config repo" "$CYNC_CONFIG_REPO"
 
   # 3) render per-tool instructions + link shared skills, now that the repo
   #    is current. Guarded because an older ~/.cync won't have the file yet.
@@ -206,9 +213,9 @@ cync-sync() {
 #   cync-push "add /foo command"    # custom message
 # Exits cleanly with no-op message if the working tree is clean.
 cync-push() {
-  local repo="${_claude_config_repo:-}"
+  local repo="${CYNC_CONFIG_REPO:-}"
   if [ -z "$repo" ] || [ ! -d "$repo/.git" ]; then
-    printf '\033[31mxx\033[0m  cync: _claude_config_repo not set or not a git repo\n' >&2
+    printf '\033[31mxx\033[0m  cync: CYNC_CONFIG_REPO not set or not a git repo\n' >&2
     return 1
   fi
 
@@ -273,7 +280,7 @@ cync-doctor() {
   # NB: never `local path` here — in zsh `path` is tied to $PATH, and making
   # it local empties PATH for the whole function (every external command
   # becomes "not found").
-  local repo="${_claude_config_repo:-}" fail=0 name link target
+  local repo="${CYNC_CONFIG_REPO:-}" fail=0 name link target
 
   # 1) env wiring
   if [ -n "${CYNC_DIR:-}" ] && [ -d "${CYNC_DIR:-}" ]; then
@@ -284,7 +291,7 @@ cync-doctor() {
   if [ -n "$repo" ] && [ -d "$repo/.git" ]; then
     printf '\033[32mok\033[0m  config repo → %s\n' "$repo"
   else
-    printf '\033[31mxx\033[0m  _claude_config_repo unset or not a git repo (%s)\n' "${repo:-empty}"; fail=$((fail+1))
+    printf '\033[31mxx\033[0m  CYNC_CONFIG_REPO unset or not a git repo (%s)\n' "${repo:-empty}"; fail=$((fail+1))
     repo=""
   fi
 
@@ -415,9 +422,9 @@ cync-doctor() {
 # cync-status — quick view of the config repo: uncommitted work, how far
 # ahead/behind the remote we are (after a fetch), and what landed recently.
 cync-status() {
-  local repo="${_claude_config_repo:-}"
+  local repo="${CYNC_CONFIG_REPO:-}"
   if [ -z "$repo" ] || [ ! -d "$repo/.git" ]; then
-    printf '\033[31mxx\033[0m  cync: _claude_config_repo not set or not a git repo\n' >&2
+    printf '\033[31mxx\033[0m  cync: CYNC_CONFIG_REPO not set or not a git repo\n' >&2
     return 1
   fi
   printf '\033[36m==>\033[0m cync: %s\n' "$repo"

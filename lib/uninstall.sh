@@ -76,11 +76,15 @@ DETECTED_CYNC_DIR=""
 DETECTED_CONFIG_REPO=""
 if [ ${#RC_FILES[@]} -gt 0 ]; then
   DETECTED_CYNC_DIR="$(extract_export CYNC_DIR "${RC_FILES[@]}" || true)"
-  DETECTED_CONFIG_REPO="$(extract_export _claude_config_repo "${RC_FILES[@]}" || true)"
+  # Blocks written before the rename export _claude_config_repo. Uninstall has
+  # to read both or it can't find the repo it's cleaning up after.
+  DETECTED_CONFIG_REPO="$(extract_export CYNC_CONFIG_REPO "${RC_FILES[@]}" || true)"
+  [ -n "$DETECTED_CONFIG_REPO" ] || \
+    DETECTED_CONFIG_REPO="$(extract_export _claude_config_repo "${RC_FILES[@]}" || true)"
 fi
 
 CYNC_DIR="${DETECTED_CYNC_DIR:-${CYNC_DIR:-$HOME/.cync}}"
-CONFIG_REPO="${DETECTED_CONFIG_REPO:-${_claude_config_repo:-}}"
+CONFIG_REPO="${DETECTED_CONFIG_REPO:-${CYNC_CONFIG_REPO:-${_claude_config_repo:-}}}"
 
 # Which ~/.claude entries are currently symlinks?
 SYMLINKED_ENTRIES=()
