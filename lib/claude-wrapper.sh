@@ -120,8 +120,16 @@ _cync_do_sync() {
   return 0
 }
 
+# The `command -v _cync_do_sync` guard covers shells that get the wrapper
+# functions without the helpers they call. Claude Code's shell snapshots are
+# one: they capture `claude`, `codex` and the cync-* commands but skip every
+# function whose name starts with an underscore, so `claude` printed
+# "command not found: _cync_should_sync" there before running the binary.
+# Skipping the sync round is right in that situation anyway — a tool call
+# shouldn't be making git pulls — so degrade quietly instead of warning.
+# The guard has to be inline: a helper function would be filtered out too.
 claude() {
-  if _cync_should_sync; then
+  if command -v _cync_do_sync >/dev/null 2>&1 && _cync_should_sync; then
     _cync_do_sync
   fi
 
@@ -134,7 +142,7 @@ claude() {
 # just fetched. The plugin check inside runs either way; its notice names
 # claude explicitly, and it only fires when an upstream plugin actually moved.
 codex() {
-  if _cync_should_sync; then
+  if command -v _cync_do_sync >/dev/null 2>&1 && _cync_should_sync; then
     _cync_do_sync
   fi
 
@@ -145,6 +153,12 @@ codex() {
 # right after pushing from another machine (beats the old workaround of
 # `rm ~/.claude/cync-last-sync` + relaunching claude).
 cync-sync() {
+  # Unlike the launch path, an explicit sync request that can't run should say
+  # why rather than quietly doing nothing. See the note above claude().
+  if ! command -v _cync_do_sync >/dev/null 2>&1; then
+    printf '\033[31mxx\033[0m  cync: helper functions not loaded in this shell — run `cync-sync` from an interactive shell\n' >&2
+    return 1
+  fi
   _cync_do_sync
   printf '\033[36m==>\033[0m cync: sync complete\n'
 }
